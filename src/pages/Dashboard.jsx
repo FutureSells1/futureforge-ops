@@ -5,6 +5,7 @@ import { ACCOUNTS, COLORS, money, hrs } from '../lib/format.js'
 export default function Dashboard() {
   const [rows, setRows] = useState(null)
   const [unmatched, setUnmatched] = useState([])
+  const [warnings, setWarnings] = useState([])
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -13,6 +14,8 @@ export default function Dashboard() {
       .then(({ data, error }) => { if (error) setErr(error.message); else setRows(data) })
     supabase.from('unmatched_hours').select('*').limit(50)
       .then(({ data }) => setUnmatched(data || []))
+    supabase.from('sync_warnings').select('*').order('week_start', { ascending: false })
+      .then(({ data }) => setWarnings(data || []))
   }, [])
 
   if (!configured) return (
@@ -38,6 +41,23 @@ export default function Dashboard() {
   return (
     <>
       <PageHead />
+      {warnings.length > 0 && (
+        <div className="card" style={{ marginBottom: 14, borderColor: 'var(--warnc)' }}>
+          <div className="paneltitle" style={{ color: 'var(--warnc)', marginBottom: 4 }}>
+            Sync warnings — hours below may be incomplete
+          </div>
+          {warnings.map((w) => (
+            <div key={w.id} style={{ fontSize: 12.5, padding: '4px 0', color: 'var(--mut)' }}>
+              <strong style={{ color: 'var(--ink)' }}>{w.dev_name}</strong>, week of{' '}
+              <span className="mono">{w.week_start}</span>: sheet says{' '}
+              <span className="mono">{Number(w.sheet_total).toFixed(2)}h</span>, synced{' '}
+              <span className="mono">{Number(w.synced_total).toFixed(2)}h</span>
+              {Number(w.excluded_total) > 0 && <> (+{Number(w.excluded_total).toFixed(2)}h non-project)</>}
+              {' — '}{w.detail}
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Quoted revenue" value={money(totals.rev)} />
         <Stat label="Cost (hours × rates)" value={money(totals.cost)} />
