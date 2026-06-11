@@ -8,6 +8,8 @@ export default function Projects() {
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [newChannel, setNewChannel] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
 
   async function load() {
     const { data, error } = await supabase.from('projects').select('*')
@@ -31,6 +33,23 @@ export default function Projects() {
   async function update(id, patch) {
     const { error } = await supabase.from('projects').update(patch).eq('id', id)
     if (error) setErr(error.message); else load()
+  }
+
+  async function syncNow() {
+    const url = import.meta.env.VITE_SYNC_URL
+    if (!url) { setSyncMsg('VITE_SYNC_URL not configured — see README/Vercel env vars.'); return }
+    setSyncing(true); setSyncMsg('Syncing all dev sheets — this can take a minute or two…')
+    try {
+      const res = await fetch(url)
+      const data = await res.json()
+      if (data.ok) {
+        setSyncMsg('Synced in ' + data.took_seconds + 's · ' + new Date().toLocaleTimeString())
+        load()
+      } else setSyncMsg('Sync error: ' + (data.error || 'unknown'))
+    } catch {
+      // CORS/redirect quirks can hide the response even when the sync ran
+      setSyncMsg('Sync triggered — give it a minute, then refresh.')
+    } finally { setSyncing(false) }
   }
 
   async function deleteProject(p) {
@@ -57,6 +76,12 @@ export default function Projects() {
   return (
     <>
       <Head />
+      {isAdmin && <div className="bar" style={{ marginBottom: 10 }}>
+        <button className={syncing ? 'live' : 'ghost'} onClick={syncNow} disabled={syncing}>
+          {syncing ? '⟳ Syncing…' : '⟳ Sync hours now'}
+        </button>
+        {syncMsg && <span className="muted" style={{ fontSize: 12.5 }}>{syncMsg}</span>}
+      </div>}
       {isAdmin && <div className="card bar">
         <form onSubmit={addProject} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input className="mono" placeholder="tc-ct-ocf" value={newChannel}
