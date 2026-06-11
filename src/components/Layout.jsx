@@ -3,23 +3,23 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
 import WarningsDrawer from './WarningsDrawer.jsx'
 
-const links = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/projects', label: 'Projects' },
-  { to: '/mirror', label: 'Hours Mirror' },
-]
-
-export default function Layout({ session }) {
+export default function Layout({ session, isAdmin }) {
   const [drawer, setDrawer] = useState(false)
   const [warnCount, setWarnCount] = useState(0)
 
+  const links = [
+    { to: '/', label: 'Dashboard', end: true },
+    { to: '/projects', label: 'Projects' },
+    ...(isAdmin ? [{ to: '/mirror', label: 'Hours Mirror' }] : []),
+  ]
+
   useEffect(() => {
-    if (!configured) return
+    if (!configured || !isAdmin) return
     Promise.all([
       supabase.from('sync_warnings').select('id', { count: 'exact', head: true }),
       supabase.from('unmatched_hours').select('id', { count: 'exact', head: true }),
     ]).then(([a, b]) => setWarnCount((a.count || 0) + (b.count || 0)))
-  }, [drawer]) // refresh count whenever the drawer toggles
+  }, [drawer, isAdmin])
 
   return (
     <div className="shell">
@@ -31,10 +31,12 @@ export default function Layout({ session }) {
             <span className="ndot" />{l.label}
           </NavLink>
         ))}
-        <button className="warnbtn" onClick={() => setDrawer(true)}>
-          ⚠ Warnings
-          {warnCount > 0 && <span className="badge">{warnCount}</span>}
-        </button>
+        {isAdmin && (
+          <button className="warnbtn" onClick={() => setDrawer(true)}>
+            ⚠ Warnings
+            {warnCount > 0 && <span className="badge">{warnCount}</span>}
+          </button>
+        )}
         <div className="foot">
           {configured && session ? (
             <>
@@ -48,9 +50,9 @@ export default function Layout({ session }) {
         </div>
       </aside>
       <main className="main">
-        <Outlet />
+        <Outlet context={{ isAdmin }} />
       </main>
-      <WarningsDrawer open={drawer} onClose={() => setDrawer(false)} />
+      {isAdmin && <WarningsDrawer open={drawer} onClose={() => setDrawer(false)} />}
     </div>
   )
 }

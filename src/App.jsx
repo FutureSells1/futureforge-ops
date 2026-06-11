@@ -10,29 +10,35 @@ import HoursMirror from './pages/HoursMirror.jsx'
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = loading
+  const [role, setRole] = useState(null)            // 'admin' | 'dev' | null = loading
 
   useEffect(() => {
-    if (!configured) { setSession(null); return }
+    if (!configured) { setSession(null); setRole('admin'); return } // setup mode: show everything
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!configured || !session) return
+    supabase.from('app_roles').select('role').eq('user_id', session.user.id).maybeSingle()
+      .then(({ data }) => setRole(data?.role === 'admin' ? 'admin' : 'dev')) // no row -> dev (safe default)
+  }, [session])
+
   if (session === undefined) return null
-
-  // Not configured yet: skip login so the app is explorable in setup mode.
-  // Each data page shows what to configure instead of data.
   const authed = !configured || Boolean(session)
-
   if (!authed) return <Login />
+  if (configured && session && role === null) return null // brief role load
+
+  const isAdmin = role === 'admin'
 
   return (
     <Routes>
-      <Route element={<Layout session={session} />}>
+      <Route element={<Layout session={session} isAdmin={isAdmin} />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />
-        <Route path="/mirror" element={<HoursMirror />} />
+        {isAdmin && <Route path="/mirror" element={<HoursMirror />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

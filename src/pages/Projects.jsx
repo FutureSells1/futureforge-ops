@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
 import { ACCOUNTS, COLORS, money } from '../lib/format.js'
 
 export default function Projects() {
+  const { isAdmin } = useOutletContext()
   const [rows, setRows] = useState(null)
   const [err, setErr] = useState('')
   const [newChannel, setNewChannel] = useState('')
@@ -32,6 +33,16 @@ export default function Projects() {
     if (error) setErr(error.message); else load()
   }
 
+  async function deleteProject(p) {
+    if (!window.confirm('Delete ' + p.channel + ' permanently? This cannot be undone.')) return
+    const { error } = await supabase.from('projects').delete().eq('id', p.id)
+    if (error) {
+      if (error.code === '23503') {
+        setErr(p.channel + ' has hours logged against it, so it can\'t be deleted (that would orphan the hours). Archive it instead.')
+      } else setErr(error.message)
+    } else load()
+  }
+
   if (!configured) return (
     <>
       <Head />
@@ -46,14 +57,14 @@ export default function Projects() {
   return (
     <>
       <Head />
-      <div className="card bar">
+      {isAdmin && <div className="card bar">
         <form onSubmit={addProject} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input className="mono" placeholder="tc-ct-ocf" value={newChannel}
             onChange={(e) => setNewChannel(e.target.value)} style={{ width: 180 }} />
           <button className="ghost" type="submit">Add project</button>
           <span className="muted" style={{ fontSize: 12 }}>manual fallback — the Zap adds new channels automatically</span>
         </form>
-      </div>
+      </div>}
       {err && <div className="statusline warn">{err}</div>}
       <div className="card">
         {!rows ? <div className="muted">Loading…</div> : rows.length === 0 ? (
@@ -62,22 +73,31 @@ export default function Projects() {
           <table className="data">
             <thead><tr>
               <th>Channel</th><th>Account</th><th>Client name</th><th>Display name</th>
-              <th className="num">Quoted revenue</th><th>Status</th>
+              {isAdmin && <><th className="num">Quoted revenue</th><th>Actions</th></>}
             </tr></thead>
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id} style={p.status === 'archived' ? { opacity: .45 } : null}>
                   <td className="mono"><Link to={'/projects/' + p.id} style={{ textDecoration: 'underline', textDecorationColor: 'var(--line2)' }}>{p.channel}</Link></td>
                   <td><span className="pill"><span className="swatch" style={{ background: COLORS[p.account] }} />{ACCOUNTS[p.account]}</span></td>
-                  <td><InlineText value={p.client_name} onSave={(v) => update(p.id, { client_name: v })} placeholder="e.g. Caio Tralba" /></td>
-                  <td><InlineText value={p.display_name} onSave={(v) => update(p.id, { display_name: v })} placeholder="e.g. Webflow Website" /></td>
-                  <td className="num"><InlineMoney value={p.quoted_revenue} onSave={(v) => update(p.id, { quoted_revenue: v })} /></td>
-                  <td>
-                    <button className="ghost" style={{ padding: '3px 10px', fontSize: 11.5 }}
-                      onClick={() => update(p.id, { status: p.status === 'active' ? 'archived' : 'active' })}>
-                      {p.status === 'active' ? 'archive' : 'restore'}
-                    </button>
-                  </td>
+                  {isAdmin ? <>
+                    <td><InlineText value={p.client_name} onSave={(v) => update(p.id, { client_name: v })} placeholder="e.g. Caio Tralba" /></td>
+                    <td><InlineText value={p.display_name} onSave={(v) => update(p.id, { display_name: v })} placeholder="e.g. Webflow Website" /></td>
+                    <td className="num"><InlineMoney value={p.quoted_revenue} onSave={(v) => update(p.id, { quoted_revenue: v })} /></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="ghost" style={{ padding: '3px 10px', fontSize: 11.5 }}
+                        onClick={() => update(p.id, { status: p.status === 'active' ? 'archived' : 'active' })}>
+                        {p.status === 'active' ? 'archive' : 'restore'}
+                      </button>
+                      <button className="ghost" style={{ padding: '3px 10px', fontSize: 11.5, marginLeft: 6, color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                        onClick={() => deleteProject(p)}>
+                        delete
+                      </button>
+                    </td>
+                  </> : <>
+                    <td>{p.client_name || '—'}</td>
+                    <td>{p.display_name || '—'}</td>
+                  </>}
                 </tr>
               ))}
             </tbody>

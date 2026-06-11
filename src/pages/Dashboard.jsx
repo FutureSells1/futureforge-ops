@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
 import { ACCOUNTS, COLORS, money, hrs } from '../lib/format.js'
 
 export default function Dashboard() {
+  const { isAdmin } = useOutletContext()
   const [rows, setRows] = useState(null)
   const [q, setQ] = useState('')
   const [err, setErr] = useState('')
@@ -20,8 +21,7 @@ export default function Dashboard() {
     <>
       <Head />
       <div className="notice">
-        No database connected yet. Create a Supabase project, run <code>supabase/schema.sql</code>,
-        then fill in <code>.env</code> — the README has the full walkthrough.
+        No database connected yet — fill in <code>.env</code> per the README.
       </div>
     </>
   )
@@ -51,8 +51,8 @@ export default function Dashboard() {
           <table className="data">
             <thead><tr>
               <th>Channel</th><th>Account</th><th>Client</th>
-              <th className="num">Hours</th><th className="num">Cost</th>
-              <th className="num">Quoted</th><th className="num">Margin</th>
+              <th className="num">Hours</th>
+              {isAdmin && <><th className="num">Cost</th><th className="num">Revenue</th><th className="num">Margin</th></>}
             </tr></thead>
             <tbody>
               {shown.map((r) => (
@@ -61,9 +61,11 @@ export default function Dashboard() {
                   <td><span className="pill"><span className="swatch" style={{ background: COLORS[r.account] }} />{ACCOUNTS[r.account] || r.account}</span></td>
                   <td>{r.client_name || '—'}</td>
                   <td className="num">{hrs(r.total_hours)}</td>
-                  <td className="num">{money(r.total_cost)}</td>
-                  <td className="num">{money(r.quoted_revenue)}</td>
-                  <td className={'num ' + (Number(r.margin) >= 0 ? 'pos' : 'neg')}>{money(r.margin)}</td>
+                  {isAdmin && <>
+                    <td className="num">{money(r.total_cost)}</td>
+                    <td className="num">{money(r.total_revenue)}</td>
+                    <td className={'num ' + (Number(r.margin) >= 0 ? 'pos' : 'neg')}>{money(r.margin)}</td>
+                  </>}
                 </tr>
               ))}
             </tbody>
@@ -78,7 +80,7 @@ function Head() {
   return (
     <div className="pagehead">
       <h1>Dashboard</h1>
-      <span className="sub">every project · hours in, money out · click through for detail</span>
+      <span className="sub">every project · click through for detail</span>
     </div>
   )
 }

@@ -6,13 +6,18 @@ export default function WarningsDrawer({ open, onClose }) {
   const [warnings, setWarnings] = useState([])
   const [unmatched, setUnmatched] = useState([])
 
-  useEffect(() => {
-    if (!open || !configured) return
+  function load() {
     supabase.from('sync_warnings').select('*').order('week_start', { ascending: false })
       .then(({ data }) => setWarnings(data || []))
     supabase.from('unmatched_hours').select('*').limit(100)
       .then(({ data }) => setUnmatched(data || []))
-  }, [open])
+  }
+  useEffect(() => { if (open && configured) load() }, [open])
+
+  async function dismissWarning(id) {
+    await supabase.from('sync_warnings').delete().eq('id', id)
+    load()
+  }
 
   if (!open) return null
 
@@ -30,7 +35,11 @@ export default function WarningsDrawer({ open, onClose }) {
         {warnings.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>None — every sheet reconciles. 🎉</div>}
         {warnings.map((w) => (
           <div className="witem" key={w.id}>
-            <strong>{w.dev_name}</strong> · week of <span className="mono">{w.week_start}</span>
+            <div style={{ display: 'flex', alignItems: 'baseline' }}>
+              <span><strong>{w.dev_name}</strong> · week of <span className="mono">{w.week_start}</span></span>
+              <button className="ghost" style={{ marginLeft: 'auto', padding: '1px 8px', fontSize: 11 }}
+                onClick={() => dismissWarning(w.id)}>dismiss</button>
+            </div>
             <div style={{ marginTop: 4 }}>
               sheet <span className="mono">{Number(w.sheet_total).toFixed(2)}h</span> · synced{' '}
               <span className="mono">{Number(w.synced_total).toFixed(2)}h</span>
