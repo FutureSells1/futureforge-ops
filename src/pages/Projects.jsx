@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
 import { ACCOUNTS, COLORS, money } from '../lib/format.js'
 
@@ -66,7 +67,7 @@ export default function Projects() {
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id} style={p.status === 'archived' ? { opacity: .45 } : null}>
-                  <td className="mono">{p.channel}</td>
+                  <td className="mono"><Link to={'/projects/' + p.id} style={{ textDecoration: 'underline', textDecorationColor: 'var(--line2)' }}>{p.channel}</Link></td>
                   <td><span className="pill"><span className="swatch" style={{ background: COLORS[p.account] }} />{ACCOUNTS[p.account]}</span></td>
                   <td><InlineText value={p.client_name} onSave={(v) => update(p.id, { client_name: v })} placeholder="e.g. Caio Tralba" /></td>
                   <td><InlineText value={p.display_name} onSave={(v) => update(p.id, { display_name: v })} placeholder="e.g. Webflow Website" /></td>

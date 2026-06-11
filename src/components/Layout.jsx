@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
+import WarningsDrawer from './WarningsDrawer.jsx'
 
 const links = [
   { to: '/', label: 'Dashboard', end: true },
@@ -9,6 +10,17 @@ const links = [
 ]
 
 export default function Layout({ session }) {
+  const [drawer, setDrawer] = useState(false)
+  const [warnCount, setWarnCount] = useState(0)
+
+  useEffect(() => {
+    if (!configured) return
+    Promise.all([
+      supabase.from('sync_warnings').select('id', { count: 'exact', head: true }),
+      supabase.from('unmatched_hours').select('id', { count: 'exact', head: true }),
+    ]).then(([a, b]) => setWarnCount((a.count || 0) + (b.count || 0)))
+  }, [drawer]) // refresh count whenever the drawer toggles
+
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -19,6 +31,10 @@ export default function Layout({ session }) {
             <span className="ndot" />{l.label}
           </NavLink>
         ))}
+        <button className="warnbtn" onClick={() => setDrawer(true)}>
+          ⚠ Warnings
+          {warnCount > 0 && <span className="badge">{warnCount}</span>}
+        </button>
         <div className="foot">
           {configured && session ? (
             <>
@@ -34,6 +50,7 @@ export default function Layout({ session }) {
       <main className="main">
         <Outlet />
       </main>
+      <WarningsDrawer open={drawer} onClose={() => setDrawer(false)} />
     </div>
   )
 }

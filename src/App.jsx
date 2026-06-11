@@ -5,6 +5,7 @@ import Layout from './components/Layout.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Projects from './pages/Projects.jsx'
+import ProjectDetail from './pages/ProjectDetail.jsx'
 import HoursMirror from './pages/HoursMirror.jsx'
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
       <Route element={<Layout session={session} />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/projects" element={<Projects />} />
+        <Route path="/projects/:id" element={<ProjectDetail />} />
         <Route path="/mirror" element={<HoursMirror />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

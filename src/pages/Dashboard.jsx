@@ -1,77 +1,52 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
 import { ACCOUNTS, COLORS, money, hrs } from '../lib/format.js'
 
 export default function Dashboard() {
   const [rows, setRows] = useState(null)
-  const [unmatched, setUnmatched] = useState([])
-  const [warnings, setWarnings] = useState([])
+  const [q, setQ] = useState('')
   const [err, setErr] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!configured) return
-    supabase.from('project_profitability').select('*').order('margin', { ascending: true })
+    supabase.from('project_profitability').select('*')
+      .order('total_hours', { ascending: false })
       .then(({ data, error }) => { if (error) setErr(error.message); else setRows(data) })
-    supabase.from('unmatched_hours').select('*').limit(50)
-      .then(({ data }) => setUnmatched(data || []))
-    supabase.from('sync_warnings').select('*').order('week_start', { ascending: false })
-      .then(({ data }) => setWarnings(data || []))
   }, [])
 
   if (!configured) return (
     <>
-      <PageHead />
+      <Head />
       <div className="notice">
-        No database connected yet. Create a Supabase project, run <code>supabase/schema.sql</code> in
-        its SQL editor, then copy <code>.env.example</code> to <code>.env</code> and fill in your
-        project URL and anon key. The README has the full walkthrough.
+        No database connected yet. Create a Supabase project, run <code>supabase/schema.sql</code>,
+        then fill in <code>.env</code> — the README has the full walkthrough.
       </div>
     </>
   )
+  if (err) return (<><Head /><div className="notice warn">Couldn't load data: {err}</div></>)
+  if (!rows) return (<><Head /><div className="muted">Loading…</div></>)
 
-  if (err) return (<><PageHead /><div className="notice warn">Couldn't load data: {err}</div></>)
-  if (!rows) return (<><PageHead /><div className="muted">Loading…</div></>)
-
-  const totals = rows.reduce((a, r) => ({
-    hours: a.hours + Number(r.total_hours),
-    cost: a.cost + Number(r.total_cost),
-    rev: a.rev + Number(r.quoted_revenue),
-  }), { hours: 0, cost: 0, rev: 0 })
+  const needle = q.trim().toLowerCase()
+  const shown = rows.filter((r) =>
+    !needle ||
+    r.channel.includes(needle) ||
+    (r.client_name || '').toLowerCase().includes(needle) ||
+    (r.display_name || '').toLowerCase().includes(needle)
+  )
 
   return (
     <>
-      <PageHead />
-      {warnings.length > 0 && (
-        <div className="card" style={{ marginBottom: 14, borderColor: 'var(--warnc)' }}>
-          <div className="paneltitle" style={{ color: 'var(--warnc)', marginBottom: 4 }}>
-            Sync warnings — hours below may be incomplete
-          </div>
-          {warnings.map((w) => (
-            <div key={w.id} style={{ fontSize: 12.5, padding: '4px 0', color: 'var(--mut)' }}>
-              <strong style={{ color: 'var(--ink)' }}>{w.dev_name}</strong>, week of{' '}
-              <span className="mono">{w.week_start}</span>: sheet says{' '}
-              <span className="mono">{Number(w.sheet_total).toFixed(2)}h</span>, synced{' '}
-              <span className="mono">{Number(w.synced_total).toFixed(2)}h</span>
-              {Number(w.excluded_total) > 0 && <> (+{Number(w.excluded_total).toFixed(2)}h non-project)</>}
-              {' — '}{w.detail}
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
-        <Stat label="Quoted revenue" value={money(totals.rev)} />
-        <Stat label="Cost (hours × rates)" value={money(totals.cost)} />
-        <Stat label="Margin" value={money(totals.rev - totals.cost)} tone={totals.rev - totals.cost >= 0 ? 'pos' : 'neg'} />
-        <Stat label="Total hours" value={hrs(totals.hours)} />
-      </div>
-
+      <Head />
       <div className="card">
-        <div className="paneltitle">Project profitability</div>
-        {rows.length === 0 ? (
-          <div className="notice">
-            No projects yet. They arrive automatically when the Zapier zap inserts new Slack
-            channels, or add one manually on the Projects page.
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <input className="searchbox" placeholder="search channel, client, name…"
+            value={q} onChange={(e) => setQ(e.target.value)} />
+          <span className="muted" style={{ fontSize: 12 }}>{shown.length} project{shown.length === 1 ? '' : 's'} · click a row for the full breakdown</span>
+        </div>
+        {shown.length === 0 ? (
+          <div className="notice">No projects match "{q}".</div>
         ) : (
           <table className="data">
             <thead><tr>
@@ -80,8 +55,8 @@ export default function Dashboard() {
               <th className="num">Quoted</th><th className="num">Margin</th>
             </tr></thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
+              {shown.map((r) => (
+                <tr key={r.id} className="click" onClick={() => navigate('/projects/' + r.id)}>
                   <td className="mono">{r.channel}</td>
                   <td><span className="pill"><span className="swatch" style={{ background: COLORS[r.account] }} />{ACCOUNTS[r.account] || r.account}</span></td>
                   <td>{r.client_name || '—'}</td>
@@ -95,43 +70,15 @@ export default function Dashboard() {
           </table>
         )}
       </div>
-
-      {unmatched.length > 0 && (
-        <div className="card" style={{ marginTop: 14 }}>
-          <div className="paneltitle"><span className="swatch" style={{ background: 'var(--warnc)' }} />Unmatched hours — fix these so costs stay accurate</div>
-          <table className="data">
-            <thead><tr><th>Dev</th><th>Key from sheet</th><th>Date</th><th className="num">Hours</th></tr></thead>
-            <tbody>
-              {unmatched.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.dev}</td>
-                  <td className="mono">{u.raw_key}</td>
-                  <td className="mono">{u.work_date}</td>
-                  <td className="num">{hrs(u.hours)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </>
   )
 }
 
-function PageHead() {
+function Head() {
   return (
     <div className="pagehead">
       <h1>Dashboard</h1>
-      <span className="sub">hours in, money out — per project, across all three accounts</span>
-    </div>
-  )
-}
-
-function Stat({ label, value, tone }) {
-  return (
-    <div className="card" style={{ minWidth: 170, flex: 1 }}>
-      <div className="muted" style={{ fontSize: 11.5, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</div>
-      <div className={'mono ' + (tone || '')} style={{ fontSize: 22, fontWeight: 500, marginTop: 4 }}>{value}</div>
+      <span className="sub">every project · hours in, money out · click through for detail</span>
     </div>
   )
 }
