@@ -409,10 +409,10 @@ export default function HoursMirror() {
         <span className="sub">log on Upwork · it watches · free time stays obvious · all times UTC{labs ? ' · week of ' + weekStart : ''}</span>
       </div>
       <div className="m-only notice" style={{ marginBottom: 12 }}>
-        The Hours Mirror needs desktop Chrome — phones can't screen-share the Upwork window. Open this page on your Mac on Sundays; everything else in the app works great from here.
+        Screen capture needs desktop Chrome — do mirror sessions on your Mac. Below: this week's mirrored results and provisional margins, live.
       </div>
 
-      <div className="card bar">
+      <div className="card bar d-only">
         {!hasKey ? (
           <div className="keyline">
             <span>Anthropic API key</span>
@@ -429,7 +429,7 @@ export default function HoursMirror() {
         )}
       </div>
 
-      <div className="card bar">
+      <div className="card bar d-only">
         <button className={sharing ? 'ghost' : 'primary'} onClick={toggleShare}>
           {sharing ? 'Stop sharing' : 'Share Upwork window'}
         </button>
@@ -447,7 +447,7 @@ export default function HoursMirror() {
         </select>
       </div>
 
-      <div className="statusline">
+      <div className="statusline d-only">
         {sharing && <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="dot" />sharing</span>}
         {status.msg && <span>{status.msg}</span>}
         {status.warn && <span className="warn">{status.warn}</span>}
@@ -466,7 +466,37 @@ export default function HoursMirror() {
 
       <video ref={videoRef} muted playsInline className="hidden" />
 
-      <div className="cols">
+      {/* ---------- mobile: read-only week results ---------- */}
+      {labs && (
+        <div className="m-only">
+          <div className="tabs" style={{ marginBottom: 10 }}>
+            {Object.entries(NAMES).map(([k]) => (
+              <button key={k} className={'tab' + (k === acct ? ' active' : '')}
+                style={k === acct ? { background: COLORS[k] } : null}
+                onClick={() => setAcct(k)}>{k}</button>
+            ))}
+          </div>
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="paneltitle"><span className="swatch" style={{ background: COLORS[acct] }} />Mirrored — week of {weekStart}</div>
+            <div className="mono">
+              {DAYS.map((d, i) => {
+                const dayBlocks = blocks.filter((b) => b.acct === acct && b.day === i)
+                const tot = dayBlocks.reduce((a, b) => a + (b.end - b.start), 0) / 60
+                const conf = dayBlocks.filter((b) => b.cproj).reduce((a, b) => a + (b.end - b.start), 0) / 60
+                return (
+                  <div className="gaprow" key={i}>
+                    <span className="d">{d}</span>
+                    <span className="g muted" style={{ fontSize: 11 }}>{tot ? conf.toFixed(1) + 'h confirmed' : '—'}</span>
+                    <span className="h">{tot ? tot.toFixed(1) + 'h' : ''}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="cols d-only">
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="tabs">
@@ -556,7 +586,7 @@ export default function HoursMirror() {
           {strip.rows.length === 0 ? (
             <div className="muted" style={{ fontSize: 12.5 }}>No mirrored hours assigned to projects yet — confirm a few suggestions and the margin math appears here.</div>
           ) : (
-            <div className="scrollx">
+            <div className="scrollx d-only">
               <table className="data">
                 <thead><tr>
                   <th>Project</th><th className="num">Mirrored</th><th className="num">Dev cost (sheets)</th>
@@ -608,6 +638,42 @@ export default function HoursMirror() {
               </table>
             </div>
           )}
+          <div className="m-only">
+            {strip.rows.map((r) => {
+              const fixed = r.p.billing_type === 'fixed'
+              const raw = billedDraft[r.pid] ?? defaultBilled(r)
+              const amt = Number(raw) || 0
+              const margin = net(amt) - r.cost
+              const pushed = pushedOk[r.pid] || (weekRev[r.pid] != null && (billedDraft[r.pid] === undefined || Number(billedDraft[r.pid]) === weekRev[r.pid]))
+              return (
+                <div className="pcard" key={r.pid} style={{ marginBottom: 10 }}>
+                  <div className="pcard-top">
+                    <span className="swatch" style={{ background: COLORS[acct] }} />
+                    <strong style={{ fontSize: 13.5 }}>{r.p.display_name || r.p.channel}</strong>
+                    <span className="muted" style={{ marginLeft: 'auto', fontSize: 10.5 }}>{r.p.billing_type}</span>
+                  </div>
+                  <div className="pcard-stats">
+                    <div className="pstat"><em>Mirrored</em><b>{hrs(r.conf)}{r.sugg > 0 ? ' +' + r.sugg.toFixed(1) + '?' : ''}</b></div>
+                    <div className="pstat"><em>Dev cost</em><b>{money(r.cost)}</b></div>
+                    {!fixed && <div className="pstat"><em>Margin</em><b className={margin >= 0 ? 'pos' : 'neg'}>{money(margin)}</b></div>}
+                  </div>
+                  {fixed ? (
+                    <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>fixed-price — revenue via milestones</div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+                      <input className="mono" inputMode="decimal" style={{ flex: 1, minWidth: 0 }}
+                        placeholder={Number(r.p.billing_rate) ? '@' + r.p.billing_rate + '/h' : 'billed amount'}
+                        value={raw}
+                        onChange={(e) => { setBilledDraft((p) => ({ ...p, [r.pid]: e.target.value })); setPushedOk((p) => ({ ...p, [r.pid]: false })) }} />
+                      {pushed
+                        ? <span style={{ color: 'var(--ok)', fontSize: 12, flex: 'none' }}>✓ pushed</span>
+                        : <button className="ghost" style={{ fontSize: 12, flex: 'none' }} onClick={() => pushBilled(r)}>Push</button>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
           {strip.unassigned > 0 && (
             <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>⚠ {strip.unassigned.toFixed(1)}h mirrored with no project — click those blocks to assign them.</div>
           )}

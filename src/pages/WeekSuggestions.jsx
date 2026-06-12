@@ -49,6 +49,7 @@ export default function WeekSuggestions() {
   const [msg, setMsg] = useState('')
   const [selected, setSelected] = useState(null)
   const [pop, setPop] = useState(null)
+  const [selDay, setSelDay] = useState(() => (new Date().getDay() + 6) % 7)
 
   useEffect(() => {
     const h = () => { setSelected(null); setPop(null) }
@@ -288,7 +289,75 @@ export default function WeekSuggestions() {
 
       {msg && <div className="statusline"><span>{msg}</span></div>}
 
-      <div className="cols">
+      {/* ---------- mobile: account tabs + day agenda ---------- */}
+      <div className="m-only">
+        <div className="tabs" style={{ marginBottom: 10 }}>
+          {Object.entries(NAMES).map(([k]) => (
+            <button key={k} className={'tab' + (k === acct ? ' active' : '')}
+              style={k === acct ? { background: COLORS[k] } : null}
+              onClick={() => { setAcct(k); setMsg('') }}>{k}</button>
+          ))}
+        </div>
+        <div className="daychips">
+          {DAYS.map((d, i) => {
+            const ph = acctPlan.filter((r) => r.day === i).reduce((a, r) => a + (r.end_min - r.start_min), 0) / 60
+            return (
+              <button key={i} className={'daychip' + (selDay === i ? ' on' : '')} onClick={() => setSelDay(i)}>
+                <span>{d.slice(0, 1)}</span>
+                <em>{ph > 0 ? ph.toFixed(ph % 1 ? 1 : 0) + 'h' : '·'}</em>
+              </button>
+            )
+          })}
+        </div>
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="paneltitle">
+            <span className="swatch" style={{ background: COLORS[acct] }} />
+            {DAYS[selDay]} · {plusDays(weekStart, selDay)}
+          </div>
+          {(() => {
+            const mir = acctMirror.filter((b) => b.day === selDay).map((b) => ({ kind: 'mir', s: b.start_min, e: b.end_min, pid: b.confirmed_project_id, id: 'm' + b.id }))
+            const pln = acctPlan.filter((r) => r.day === selDay).map((r) => ({ kind: 'plan', s: r.start_min, e: r.end_min, pid: r.project_id, row: r, id: r.id }))
+            const all = [...mir, ...pln].sort((a, b) => a.s - b.s)
+            if (!all.length) return <div className="muted" style={{ fontSize: 12.5 }}>Nothing on this day.</div>
+            return all.map((x) => x.kind === 'mir' ? (
+              <div key={x.id} className="agrow mir">
+                <span className="mono agtime">{mlab(x.s)}–{mlab(x.e)}</span>
+                <span className="agname muted">{x.pid ? nameOf(x.pid) : 'on Upwork'}</span>
+                <span className="agtag">logged</span>
+              </div>
+            ) : (
+              <div key={x.id} className={'agrow' + (x.row.status === 'done' ? ' donerow' : '')}
+                style={{ borderLeft: '3px solid ' + COLORS[acct] }}>
+                <span className="mono agtime">{mlab(x.s)}–{mlab(x.e)}</span>
+                <span className="agname">{nameOf(x.pid)}</span>
+                <button className="ghost agbtn" onClick={() => setDone(x.row, x.row.status !== 'done')}>{x.row.status === 'done' ? '↺' : '✓'}</button>
+                <button className="ghost agbtn" onClick={() => removeRow(x.row)}>✕</button>
+              </div>
+            ))
+          })()}
+        </div>
+        {loaded && summary.length > 0 && (
+          <div className="plist">
+            {summary.map((r) => (
+              <div className="pcard" key={r.pid}>
+                <div className="pcard-top">
+                  <span className="swatch" style={{ background: COLORS[acct] }} />
+                  <strong style={{ fontSize: 13.5 }}>{r.p.display_name || r.p.channel}</strong>
+                  <span className="muted" style={{ marginLeft: 'auto', fontSize: 10.5 }}>{r.p.billing_type}</span>
+                </div>
+                <div className="pcard-stats">
+                  <div className="pstat"><em>Worked</em><b>{hrs(r.worked / 60)}</b></div>
+                  <div className="pstat"><em>On Upwork</em><b>{hrs(r.logged / 60)}</b></div>
+                  <div className="pstat"><em>Planned</em><b>{hrs(r.planned / 60)}</b></div>
+                  <div className="pstat"><em>To log</em><b style={{ color: r.toLog >= MIN_CHUNK ? 'var(--warnc)' : 'var(--ok)' }}>{hrs(r.toLog / 60)}</b></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="cols d-only">
         <div className="card">
           <div className="tabs">
             {Object.entries(NAMES).map(([k, n]) => (

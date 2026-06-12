@@ -339,3 +339,45 @@ html{-webkit-text-size-adjust:100%;}
 .confirmcard{align-self:flex-start;background:rgba(110,118,242,.08);border:1px solid var(--tc);border-radius:12px;padding:12px 14px;max-width:78%;}
 .chatbar{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line2);}
 .chatbar input{flex:1;}
+
+/* ---------- mobile: day chips + agenda (Week Suggestions) ---------- */
+.daychips{display:flex;gap:6px;margin-bottom:12px;}
+.daychip{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:12px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--mut);font-size:13px;font-weight:600;min-height:52px;}
+.daychip em{font-style:normal;font-size:9.5px;font-family:"IBM Plex Mono",monospace;color:var(--mut);}
+.daychip.on{background:var(--tc);border-color:transparent;color:#fff;}
+.daychip.on em{color:rgba(255,255,255,.85);}
+.agrow{display:flex;align-items:center;gap:10px;padding:11px 10px;border-radius:10px;margin-top:8px;
+  background:var(--panel2);border:1px solid var(--line);}
+.agrow.mir{opacity:.55;border-style:dashed;}
+.agrow.donerow{opacity:.65;}
+.agrow.donerow .agname{text-decoration:line-through;}
+.agtime{font-size:11.5px;color:var(--mut);flex:none;}
+.agname{font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.agtag{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);flex:none;}
+.agbtn{padding:4px 10px !important;min-height:34px !important;font-size:13px;flex:none;}
+
+@media (max-width: 760px){
+  /* iOS large-title headers */
+  h1{font-size:24px;letter-spacing:-.02em;}
+  .pagehead{margin-bottom:12px;}
+
+  /* Apple HIG touch targets */
+  button{min-height:44px;}
+  .agbtn{min-height:34px;}
+
+  /* bars wrap instead of overflowing */
+  .bar{flex-wrap:wrap;row-gap:8px;}
+
+  /* assistant chat fills the screen naturally */
+  .chatlog{min-height:0;max-height:none;height:calc(100dvh - 330px);}
+  .bubble{max-width:86%;font-size:14px;}
+  .confirmcard{max-width:92%;}
+
+  /* deeper layering on sheets/drawers */
+  .drawer,.sheet{box-shadow:0 -8px 40px rgba(0,0,0,.45);}
+
+  /* bottom nav: springier active state */
+  .bnav-item.active{transform:translateY(-1px);}
+  .bnav-item.active svg{transform:scale(1.08);transition:transform .18s cubic-bezier(.3,1.4,.5,1);}
+}
