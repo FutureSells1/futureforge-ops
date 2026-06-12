@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Projects from './pages/Projects.jsx'
 import ProjectDetail from './pages/ProjectDetail.jsx'
 import HoursMirror from './pages/HoursMirror.jsx'
+import WeekSuggestions from './pages/WeekSuggestions.jsx'
 import Team from './pages/Team.jsx'
 import LockScreen from './components/LockScreen.jsx'
 import { bioLocked } from './lib/biolock.js'
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/projects/:id" element={<ProjectDetail />} />
         {isAdmin && <Route path="/team" element={<Team />} />}
         {isAdmin && <Route path="/mirror" element={<HoursMirror />} />}
+        {isAdmin && <Route path="/suggestions" element={<WeekSuggestions />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
