@@ -80,11 +80,14 @@ export default function Team() {
   const inWeek = entries.filter((e) => e.work_date >= selWeek && e.work_date <= weekEnd)
 
   const perDev = {}
-  devs.forEach((d) => { perDev[d.id] = { name: d.name, unassigned: 0, overheadOther: {}, daily: {} } })
+  devs.forEach((d) => { perDev[d.id] = { name: d.name, unassigned: 0, overheadOther: {}, daily: {}, dailyUn: {} } })
   inWeek.forEach((e) => {
     const p = perDev[e.dev_id]; if (!p) return
     p.daily[e.work_date] = (p.daily[e.work_date] || 0) + Number(e.hours)
-    if (isUnassigned(e)) p.unassigned += Number(e.hours)
+    if (isUnassigned(e)) {
+      p.unassigned += Number(e.hours)
+      p.dailyUn[e.work_date] = (p.dailyUn[e.work_date] || 0) + Number(e.hours)
+    }
     else if (e.is_overhead) {
       const k = String(e.raw_key)
       p.overheadOther[k] = (p.overheadOther[k] || 0) + Number(e.hours)
@@ -198,6 +201,33 @@ export default function Team() {
         <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
           <span className="cell-ok legend">≥{DAILY_MIN}h</span> <span className="cell-bad legend">&lt;{DAILY_MIN}h on a past weekday</span> <span className="cell-wk legend">weekend hours (not flagged)</span> <span className="cell-na legend">today / future</span>
           — flags only apply to weekdays that have already passed.
+        </div>
+      </div>
+
+      {/* unassigned-only grid */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="paneltitle">Unassigned hours by day — {fmtWeek(selWeek)}</div>
+        <table className="data compliance">
+          <thead><tr>
+            <th>Dev</th>
+            {DOW.map((d) => <th className="num" key={d}>{d}</th>)}
+            <th className="num">Week</th>
+          </tr></thead>
+          <tbody>
+            {[...rows].sort((a, b) => b.unassigned - a.unassigned).map((r) => (
+              <tr key={r.name}>
+                <td>{r.name}</td>
+                {weekDays.map((ds, i) => {
+                  const u = r.dailyUn[ds] || 0
+                  return <td className={'num ' + (u > 0 ? 'cell-un' : 'cell-na')} key={i}>{u > 0 ? Number(u.toFixed(1)) : ''}</td>
+                })}
+                <td className={'num mono ' + (r.unassigned > 0 ? 'cell-un' : '')}>{r.unassigned > 0 ? hrs(r.unassigned) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
+          only hours logged as <span className="mono">unassigned</span> — sorted by weekly total.
         </div>
       </div>
     </>

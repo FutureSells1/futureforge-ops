@@ -144,3 +144,5 @@ tr.click:hover td{background:var(--panel2);}
 .compliance .cell-wk{color:var(--mut);}
 .compliance .cell-na{color:var(--line2);}
 .legend{padding:1px 7px;border-radius:4px;font-size:10.5px;margin-right:4px;}
+
+.compliance .cell-un{background:rgba(224,133,106,.16);color:#e8a;color:#eda083;font-weight:600;}
