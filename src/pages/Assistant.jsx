@@ -20,7 +20,7 @@ const mlab = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60)
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const dayIdx = (name) => DAYS.findIndex((d) => d.toLowerCase() === String(name).slice(0, 3).toLowerCase())
 
-const WRITE_TOOLS = new Set(['plan_add', 'plan_move', 'plan_delete', 'plan_mark_logged', 'set_week_billed', 'update_estimate'])
+const WRITE_TOOLS = new Set(['plan_add', 'plan_move', 'plan_delete', 'plan_mark_logged', 'set_week_billed', 'update_estimate', 'mirror_assign'])
 
 const TOOLS = [
   { name: 'get_project_detail', description: 'Fetch full detail for one project: weekly billed history, milestones, estimate, recent daily dev hours.', input_schema: { type: 'object', properties: { channel: { type: 'string', description: 'project channel, e.g. tc-ct-ocf' } }, required: ['channel'] } },
@@ -30,6 +30,7 @@ const TOOLS = [
   { name: 'plan_mark_logged', description: 'Mark plan slots as logged (done) or not.', input_schema: { type: 'object', properties: { plan_ids: { type: 'array', items: { type: 'string' } }, logged: { type: 'boolean' } }, required: ['plan_ids', 'logged'] } },
   { name: 'set_week_billed', description: 'Set the manually billed GROSS amount for an hourly project for a given week (writes project_week_revenue).', input_schema: { type: 'object', properties: { channel: { type: 'string' }, week_start: { type: 'string', description: 'Monday, YYYY-MM-DD' }, amount: { type: 'number', description: 'gross USD before the 10% Upwork fee' } }, required: ['channel', 'week_start', 'amount'] } },
   { name: 'update_estimate', description: 'Update a project estimate (initial/remaining hours, notes).', input_schema: { type: 'object', properties: { channel: { type: 'string' }, initial_hours: { type: 'number' }, remaining_hours: { type: 'number' }, notes: { type: 'string' } }, required: ['channel'] } },
+  { name: 'mirror_assign', description: 'Assign mirrored Upwork blocks (Hours Mirror) to a project, confirming them — or unassign with channel null. Use block ids from the MIRROR BLOCKS snapshot.', input_schema: { type: 'object', properties: { block_ids: { type: 'array', items: { type: 'string' } }, channel: { type: ['string', 'null'], description: 'project channel, or null to unassign' } }, required: ['block_ids', 'channel'] } },
 ]
 
 function toolSummary(tu, byChannel) {
@@ -42,6 +43,7 @@ function toolSummary(tu, byChannel) {
     case 'plan_mark_logged': return (i.logged ? 'Mark logged: ' : 'Mark NOT logged: ') + (i.plan_ids || []).length + ' slot(s)'
     case 'set_week_billed': return 'Set billed: ' + i.channel + ' · week ' + i.week_start + ' → $' + Number(i.amount).toFixed(2) + ' gross'
     case 'update_estimate': return 'Update estimate: ' + i.channel
+    case 'mirror_assign': return (i.channel ? 'Assign ' + (i.block_ids || []).length + ' mirrored block(s) → ' + i.channel : 'Unassign ' + (i.block_ids || []).length + ' mirrored block(s)')
     default: return tu.name
   }
 }
@@ -79,7 +81,7 @@ export default function Assistant() {
       supabase.from('projects').select('id, channel, display_name, client_name, account, billing_type, billing_rate, status'),
       supabase.from('project_estimates').select('*'),
       supabase.from('week_log_plan').select('*').eq('week_start', weekStart),
-      supabase.from('upwork_blocks').select('account, day, start_min, end_min, confirmed_project_id').eq('week_start', weekStart),
+      supabase.from('upwork_blocks').select('id, account, day, start_min, end_min, label, suggested_project_id, suggestion_confidence, confirmed_project_id').eq('week_start', weekStart),
       supabase.from('project_week_revenue').select('project_id, week_start, amount').gte('week_start', lastWeek),
       supabase.from('hours_entries').select('project_id, work_date, hours, is_overhead').gte('work_date', lastWeek).lte('work_date', weekEnd).limit(8000),
       supabase.from('devs').select('id, name, hourly_cost, active'),
@@ -128,9 +130,16 @@ export default function Assistant() {
     const mirByAcct = { tc: { h: 0, c: 0 }, bc: { h: 0, c: 0 }, nn: { h: 0, c: 0 } }
     ;(blocks.data || []).forEach((b) => { const m = mirByAcct[b.account]; if (!m) return; const hh = (b.end_min - b.start_min) / 60; m.h += hh; if (b.confirmed_project_id) m.c += hh })
     const unmH = (unm.data || []).reduce((a, r) => a + Number(r.hours), 0)
+    const chanOf = (pid) => { const p = mapsRef.current.byId.get(String(pid)); return p ? p.channel : '?' }
+    const blockLines = (blocks.data || []).slice(0, 150).map((b) =>
+      `- id:${b.id} | ${b.account} | ${DAYS[b.day]} ${mlab(b.start_min)}–${mlab(b.end_min)}` +
+      (b.label ? ` | "${String(b.label).slice(0, 40)}"` : '') +
+      (b.confirmed_project_id ? ` | ✓ ${chanOf(b.confirmed_project_id)}` :
+        b.suggested_project_id ? ` | suggested ${chanOf(b.suggested_project_id)} (${b.suggestion_confidence})` : ' | unassigned')
+    ).join('\n') || '(no mirrored blocks this week)'
 
     return `You are the FutureForge Ops assistant for Daniel (admin, agency owner). Today: ${isoDate(new Date())}. Current week (Mon): ${weekStart}.
-Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Times are 24h UTC, days Mon..Sun.
+Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Times are 24h UTC, days Mon..Sun.
 Rules for you: be concise and concrete; money in $ with gross/net stated. Use get_project_detail before deep claims about one project. Propose writes via tools ONE at a time with a one-line reason first; every write shows the user an approve/decline card. Use exact ids/channels from this snapshot — never invent them. If asked something the data can't answer, say so.
 
 === ACTIVE PROJECTS (lifetime + this week) ===
@@ -141,6 +150,9 @@ ${planLines}
 
 === MIRROR (on Upwork, week of ${weekStart}) ===
 tc ${mirByAcct.tc.h.toFixed(1)}h (${mirByAcct.tc.c.toFixed(1)} confirmed) · bc ${mirByAcct.bc.h.toFixed(1)}h (${mirByAcct.bc.c.toFixed(1)}) · nn ${mirByAcct.nn.h.toFixed(1)}h (${mirByAcct.nn.c.toFixed(1)})
+
+=== MIRROR BLOCKS (id | acct | slot | memo | assignment) ===
+${blockLines}
 
 === OTHER ===
 Devs: ${(dv.data || []).filter((d) => d.active).map((d) => d.name + ' $' + d.hourly_cost + '/h').join(', ')}
@@ -210,6 +222,12 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
           }
           const { error } = await supabase.from('project_estimates').upsert(row, { onConflict: 'project_id' })
           return error ? fail(error.message) : ok('estimate updated')
+        }
+        case 'mirror_assign': {
+          let pid = null
+          if (i.channel != null) { const p = proj(i.channel); if (!p) return fail('unknown channel ' + i.channel); pid = p.id }
+          const { error } = await supabase.from('upwork_blocks').update({ confirmed_project_id: pid }).in('id', i.block_ids || [])
+          return error ? fail(error.message) : ok((pid ? 'assigned ' : 'unassigned ') + (i.block_ids || []).length + ' block(s)')
         }
         default: return fail('unknown tool')
       }
