@@ -148,6 +148,11 @@ export default function Layout({ session, isAdmin }) {
             {unread > 0 && <span className="badge">{unread}</span>}
           </button>
         )}
+        {configured && session && (
+          <button className="warnbtn" onClick={() => setSheetOpen(true)}>
+            {I.gear} Settings
+          </button>
+        )}
         {isAdmin && (
           <button className="warnbtn" onClick={() => setDrawer(true)}>
             ⚠ Warnings
