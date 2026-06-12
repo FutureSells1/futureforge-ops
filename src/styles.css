@@ -105,6 +105,9 @@ tr.click:hover td{background:var(--panel2);}
 .drawerback{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:90;}
 .drawer{position:fixed;top:0;right:0;height:100vh;width:400px;max-width:92vw;background:var(--panel);border-left:1px solid var(--line2);z-index:100;overflow-y:auto;
   padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));}
+/* labs: mirror suggestion states */
+.blk.sugg{outline:2px dashed rgba(255,255,255,.65);outline-offset:-2px;}
+.blk.conf{outline:2px solid rgba(255,255,255,.92);outline-offset:-2px;}
 .drawer h2{font-size:15px;margin:0 0 4px;}
 .drawer .sect{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:18px 0 8px;}
 .witem{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12.5px;color:var(--mut);}
