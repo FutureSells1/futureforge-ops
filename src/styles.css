@@ -283,3 +283,26 @@ html{-webkit-text-size-adjust:100%;}
   .plist .pcard{box-shadow:0 1px 3px rgba(0,0,0,.25);}
   .card{box-shadow:0 1px 4px rgba(0,0,0,.2);}
 }
+
+/* ---------- notifications + settings sheet + lock screen ---------- */
+.notifitem{padding:11px 10px;border-radius:10px;margin-top:8px;background:var(--panel2);border:1px solid var(--line);}
+.notifitem.unread{border-color:var(--tc);background:rgba(110,118,242,.07);}
+.notiftop{display:flex;align-items:center;gap:8px;font-size:13px;}
+.notificon{flex:none;font-size:12px;}
+.notificon.warning{color:var(--warnc);} .notificon.compliance{color:var(--danger);} .notificon.info{color:var(--mut);}
+
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:110;background:var(--panel);border-top:1px solid var(--line2);
+  border-radius:18px 18px 0 0;padding:10px 16px calc(16px + env(safe-area-inset-bottom));
+  animation:sheetUp .26s cubic-bezier(.25,.8,.35,1);}
+@keyframes sheetUp{from{transform:translateY(100%);}to{transform:none;}}
+.sheetgrab{width:38px;height:4px;border-radius:2px;background:var(--line2);margin:2px auto 12px;}
+.sheetrow{display:flex;align-items:center;justify-content:space-between;width:100%;background:var(--panel2);
+  border:1px solid var(--line);border-radius:11px;padding:13px 14px;margin-bottom:8px;color:var(--ink);font-size:14px;}
+.sheetrow.danger{color:var(--danger);justify-content:center;}
+.switch{width:44px;height:26px;border-radius:13px;background:var(--line2);position:relative;transition:background .18s;flex:none;}
+.switch .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--ink);transition:left .18s;}
+.switch.on{background:var(--nn);} .switch.on .knob{left:21px;}
+
+.lockscreen{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;padding:24px;}
+.lockicon{width:64px;height:64px;color:var(--tc);}

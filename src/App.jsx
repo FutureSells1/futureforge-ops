@@ -8,9 +8,12 @@ import Projects from './pages/Projects.jsx'
 import ProjectDetail from './pages/ProjectDetail.jsx'
 import HoursMirror from './pages/HoursMirror.jsx'
 import Team from './pages/Team.jsx'
+import LockScreen from './components/LockScreen.jsx'
+import { bioLocked } from './lib/biolock.js'
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = loading
+  const [locked, setLocked] = useState(bioLocked())
   const [role, setRole] = useState(null)            // 'admin' | 'dev' | null = loading
 
   useEffect(() => {
@@ -30,6 +33,7 @@ export default function App() {
   const authed = !configured || Boolean(session)
   if (!authed) return <Login />
   if (configured && session && role === null) return null // brief role load
+  if (configured && session && locked) return <LockScreen onUnlocked={() => setLocked(false)} />
 
   const isAdmin = role === 'admin'
 
