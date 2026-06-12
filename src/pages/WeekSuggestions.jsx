@@ -17,6 +17,23 @@ const NAMES = { tc: 'Thiago — tc', bc: 'Bernardo — bc', nn: 'Nick — nn' }
 const CELL = 22
 const WIN_START = 8 * 60, WIN_END = 23 * 60   // suggestions land 08:00–23:00
 const MIN_CHUNK = 20                           // never suggest a slot under 20min
+const MEMO_LIMIT = 144                         // Upwork memo character limit
+
+// pack task strings into memo chunks of <= MEMO_LIMIT chars (joined with " · ")
+function memoChunks(tasks) {
+  const chunks = []
+  let cur = ''
+  ;(tasks || []).forEach((t0) => {
+    let t = String(t0).trim()
+    if (!t) return
+    if (t.length > MEMO_LIMIT) t = t.slice(0, MEMO_LIMIT - 1) + '…'
+    if (!cur) cur = t
+    else if ((cur + ' · ' + t).length <= MEMO_LIMIT) cur += ' · ' + t
+    else { chunks.push(cur); cur = t }
+  })
+  if (cur) chunks.push(cur)
+  return chunks
+}
 
 const pad = (n) => String(n).padStart(2, '0')
 const mlab = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60)
@@ -50,6 +67,11 @@ export default function WeekSuggestions() {
   const [selected, setSelected] = useState(null)
   const [pop, setPop] = useState(null)
   const [selDay, setSelDay] = useState(() => (new Date().getDay() + 6) % 7)
+  const [copied, setCopied] = useState(null)
+  function copyMemo(id, text) {
+    navigator.clipboard?.writeText(text)
+    setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1400)
+  }
 
   useEffect(() => {
     const h = () => { setSelected(null); setPop(null) }
@@ -98,6 +120,7 @@ export default function WeekSuggestions() {
     return { week, byDay }
   }, [entries, acct, projById, weekStart])
   const dayTasks = (pid, d) => ((taskStats.byDay[String(pid)] || [])[d] || []).join(' \u00b7 ')
+  const memoOf = (r) => r.memo || (memoChunks((taskStats.byDay[String(r.project_id)] || [])[r.day] || [])[0] || '')
 
   // worked minutes per project (and per day) from the timesheets
   const workedStats = useMemo(() => {
@@ -201,12 +224,45 @@ export default function WeekSuggestions() {
     }
     // merge adjacent same-project slots
     rows.sort((a, b) => a.day - b.day || a.start_min - b.start_min)
-    const merged = []
+    let merged = []
     rows.forEach((r) => {
       const last = merged[merged.length - 1]
       if (last && last.day === r.day && String(last.project_id) === String(r.project_id) && last.end_min === r.start_min) last.end_min = r.end_min
       else merged.push({ ...r })
     })
+
+    // memo pass: one memo (<=144 chars) per block; split blocks when a
+    // project/day has more task text than fits in one memo
+    const groups = new Map() // pid|day -> segs
+    merged.forEach((r) => {
+      const k = String(r.project_id) + '|' + r.day
+      ;(groups.get(k) || groups.set(k, []).get(k)).push(r)
+    })
+    merged = []
+    groups.forEach((segs, k) => {
+      const [pid, dStr] = k.split('|')
+      const chunks = memoChunks((taskStats.byDay[pid] || [])[Number(dStr)] || [])
+      // split largest segments until we have one per memo chunk (where possible)
+      segs.sort((a, b) => a.start_min - b.start_min)
+      while (chunks.length > 1 && segs.length < chunks.length) {
+        let bi = -1, blen = 0
+        segs.forEach((sg, i) => { const L = sg.end_min - sg.start_min; if (L >= 2 * MIN_CHUNK && L > blen) { blen = L; bi = i } })
+        if (bi < 0) break
+        const sg = segs[bi]
+        const mid = Math.max(sg.start_min + MIN_CHUNK, Math.min(sg.end_min - MIN_CHUNK, r10((sg.start_min + sg.end_min) / 2)))
+        segs.splice(bi, 1, { ...sg, end_min: mid }, { ...sg, start_min: mid })
+        segs.sort((a, b) => a.start_min - b.start_min)
+      }
+      segs.forEach((sg, i) => {
+        let memo = chunks.length ? chunks[Math.min(i, chunks.length - 1)] : null
+        if (i === segs.length - 1 && chunks.length > segs.length) {
+          memo = chunks.slice(i).join(' \u00b7 ')
+          if (memo.length > MEMO_LIMIT) memo = memo.slice(0, MEMO_LIMIT - 1) + '…'
+        }
+        merged.push({ ...sg, memo })
+      })
+    })
+    merged.sort((a, b) => a.day - b.day || a.start_min - b.start_min)
 
     if (!merged.length) {
       setPlan((prev) => prev.filter((r) => r.account !== acct))
@@ -351,8 +407,11 @@ export default function WeekSuggestions() {
                 <span className="mono agtime">{mlab(x.s)}–{mlab(x.e)}</span>
                 <span className="agname">
                   {nameOf(x.pid)}
-                  {dayTasks(x.pid, selDay) && <span className="agtask">{dayTasks(x.pid, selDay)}</span>}
+                  {memoOf(x.row) && <span className="agtask">{memoOf(x.row)}</span>}
                 </span>
+                {memoOf(x.row) && (
+                  <button className="ghost agbtn" onClick={() => copyMemo(x.row.id, memoOf(x.row))}>{copied === x.row.id ? '✓' : '⧉'}</button>
+                )}
                 <button className="ghost agbtn" onClick={() => setDone(x.row, x.row.status !== 'done')}>{x.row.status === 'done' ? '↺' : '✓'}</button>
                 <button className="ghost agbtn" onClick={() => removeRow(x.row)}>✕</button>
               </div>
@@ -494,8 +553,15 @@ export default function WeekSuggestions() {
           <span className="mono" style={{ fontSize: 11 }}>
             {DAYS[selRow.day]} {mlab(selRow.start_min)}–{mlab(selRow.end_min)} · {nameOf(selRow.project_id)}
           </span>
-          {dayTasks(selRow.project_id, selRow.day) && (
-            <span style={{ fontSize: 11, color: 'var(--mut)' }}>tasks that day: {dayTasks(selRow.project_id, selRow.day)}</span>
+          {memoOf(selRow) && (
+            <span style={{ fontSize: 11, color: 'var(--mut)' }}>
+              memo ({memoOf(selRow).length}/{MEMO_LIMIT}): {memoOf(selRow)}
+            </span>
+          )}
+          {memoOf(selRow) && (
+            <button onClick={(e) => { e.stopPropagation(); copyMemo(selRow.id, memoOf(selRow)) }}>
+              {copied === selRow.id ? '✓ copied' : '⧉ Copy memo'}
+            </button>
           )}
           <div style={{ display: 'flex', gap: 7 }}>
             <button onClick={(e) => { e.stopPropagation(); setDone(selRow, selRow.status !== 'done') }}>

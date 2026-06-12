@@ -23,8 +23,8 @@ const WRITE_TOOLS = new Set(['plan_add', 'plan_move', 'plan_delete', 'plan_mark_
 
 const TOOLS = [
   { name: 'get_project_detail', description: 'Fetch full detail for one project: weekly billed history, milestones, estimate, recent daily dev hours.', input_schema: { type: 'object', properties: { channel: { type: 'string', description: 'project channel, e.g. tc-ct-ocf' } }, required: ['channel'] } },
-  { name: 'plan_add', description: 'Add a suggested logging slot to the week plan (Week Suggestions page).', input_schema: { type: 'object', properties: { account: { type: 'string', enum: ['tc', 'bc', 'nn'] }, channel: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string', description: 'HH:MM 24h' }, end: { type: 'string', description: 'HH:MM 24h' } }, required: ['account', 'channel', 'day', 'start', 'end'] } },
-  { name: 'plan_move', description: 'Move/resize an existing plan slot. Use the plan row id from the data snapshot.', input_schema: { type: 'object', properties: { plan_id: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string' }, end: { type: 'string' } }, required: ['plan_id', 'day', 'start', 'end'] } },
+  { name: 'plan_add', description: 'Add a suggested logging slot to the week plan (Week Suggestions page).', input_schema: { type: 'object', properties: { account: { type: 'string', enum: ['tc', 'bc', 'nn'] }, channel: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string', description: 'HH:MM 24h' }, end: { type: 'string', description: 'HH:MM 24h' }, memo: { type: 'string', description: 'Upwork memo for this block, max 144 chars' } }, required: ['account', 'channel', 'day', 'start', 'end'] } },
+  { name: 'plan_move', description: 'Move/resize an existing plan slot, optionally updating its memo. Use the plan row id from the data snapshot.', input_schema: { type: 'object', properties: { plan_id: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string' }, end: { type: 'string' }, memo: { type: 'string', description: 'new Upwork memo, max 144 chars' } }, required: ['plan_id', 'day', 'start', 'end'] } },
   { name: 'plan_delete', description: 'Delete plan slots by id.', input_schema: { type: 'object', properties: { plan_ids: { type: 'array', items: { type: 'string' } } }, required: ['plan_ids'] } },
   { name: 'plan_mark_logged', description: 'Mark plan slots as logged (done) or not.', input_schema: { type: 'object', properties: { plan_ids: { type: 'array', items: { type: 'string' } }, logged: { type: 'boolean' } }, required: ['plan_ids', 'logged'] } },
   { name: 'set_week_billed', description: 'Set the manually billed GROSS amount for an hourly project for a given week (writes project_week_revenue).', input_schema: { type: 'object', properties: { channel: { type: 'string' }, week_start: { type: 'string', description: 'Monday, YYYY-MM-DD' }, amount: { type: 'number', description: 'gross USD before the 10% Upwork fee' } }, required: ['channel', 'week_start', 'amount'] } },
@@ -123,7 +123,7 @@ export default function Assistant() {
 
     const planLines = (plan.data || []).filter((r) => r.status !== 'dismissed').map((r) => {
       const p = mapsRef.current.byId.get(String(r.project_id))
-      return `- id:${r.id} | ${r.account} | ${DAYS[r.day]} ${mlab(r.start_min)}–${mlab(r.end_min)} | ${p ? p.channel : '?'} | ${r.status}`
+      return `- id:${r.id} | ${r.account} | ${DAYS[r.day]} ${mlab(r.start_min)}–${mlab(r.end_min)} | ${p ? p.channel : '?'} | ${r.status}` + (r.memo ? ` | memo: "${String(r.memo).slice(0, 60)}"` : '')
     }).join('\n') || '(empty — generate on the Week Suggestions page or add via plan_add)'
 
     const mirByAcct = { tc: { h: 0, c: 0 }, bc: { h: 0, c: 0 }, nn: { h: 0, c: 0 } }
@@ -138,7 +138,7 @@ export default function Assistant() {
     ).join('\n') || '(no mirrored blocks this week)'
 
     return `You are the FutureForge Ops assistant for Daniel (admin, agency owner). Today: ${isoDate(new Date())}. Current week (Mon): ${weekStart}.
-Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Times are 24h UTC, days Mon..Sun.
+Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed. Times are 24h UTC, days Mon..Sun.
 Rules for you: be concise and concrete; money in $ with gross/net stated. Use get_project_detail before deep claims about one project. Propose writes via tools ONE at a time with a one-line reason first; every write shows the user an approve/decline card. Use exact ids/channels from this snapshot — never invent them. If asked something the data can't answer, say so.
 
 === ACTIVE PROJECTS (lifetime + this week) ===
@@ -186,7 +186,8 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
           const d = dayIdx(i.day); if (d < 0) return fail('bad day ' + i.day)
           const s = toMin(i.start), e = toMin(i.end)
           if (!(e > s) || isNaN(s) || isNaN(e)) return fail('bad time range')
-          const { data, error } = await supabase.from('week_log_plan').insert({ account: i.account, week_start: weekStart, project_id: p.id, day: d, start_min: s, end_min: e, status: 'suggested' }).select('id').single()
+          const memo = i.memo ? String(i.memo).slice(0, 144) : null
+          const { data, error } = await supabase.from('week_log_plan').insert({ account: i.account, week_start: weekStart, project_id: p.id, day: d, start_min: s, end_min: e, status: 'suggested', memo }).select('id').single()
           if (error) return fail(error.message)
           return ok('added plan slot id:' + data.id)
         }
@@ -194,7 +195,9 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
           const d = dayIdx(i.day); if (d < 0) return fail('bad day ' + i.day)
           const s = toMin(i.start), e = toMin(i.end)
           if (!(e > s) || isNaN(s) || isNaN(e)) return fail('bad time range')
-          const { error } = await supabase.from('week_log_plan').update({ day: d, start_min: s, end_min: e }).eq('id', i.plan_id)
+          const patch = { day: d, start_min: s, end_min: e }
+          if (i.memo != null) patch.memo = String(i.memo).slice(0, 144)
+          const { error } = await supabase.from('week_log_plan').update(patch).eq('id', i.plan_id)
           return error ? fail(error.message) : ok('moved')
         }
         case 'plan_delete': {
