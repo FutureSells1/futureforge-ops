@@ -5,7 +5,7 @@ export const UPWORK_FEE = 0.10
 export const net = (x) => Number(x || 0) * (1 - UPWORK_FEE)
 
 export const money = (n) =>
-  (n < 0 ? '-$' : '$') + Math.abs(Number(n || 0)).toLocaleString('en-US', { maximumFractionDigits: 0 })
+  (n < 0 ? '-$' : '$') + Math.abs(Number(n || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export const money2 = (n) =>
   (n < 0 ? '-$' : '$') + Math.abs(Number(n || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
