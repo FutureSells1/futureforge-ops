@@ -21,12 +21,20 @@ export default function ProjectDetail() {
   const [proj, setProj] = useState(null)
   const [entries, setEntries] = useState(null)
   const [milestones, setMilestones] = useState([])
+  const [weekRev, setWeekRev] = useState({})
   const [tab, setTab] = useState('breakdown')
   const [err, setErr] = useState('')
 
   function loadProj() {
     supabase.from('project_profitability').select('*').eq('id', id).single()
       .then(({ data, error }) => { if (error) setErr(error.message); else setProj(data) })
+  }
+  function loadWeekRev() {
+    supabase.from('project_week_revenue').select('week_start, amount').eq('project_id', id)
+      .then(({ data }) => {
+        const m = {}; (data || []).forEach((r) => { m[r.week_start] = Number(r.amount) })
+        setWeekRev(m)
+      })
   }
   function loadMilestones() {
     supabase.from('project_milestones').select('*').eq('project_id', id)
@@ -35,7 +43,7 @@ export default function ProjectDetail() {
   }
   useEffect(() => {
     if (!configured) return
-    loadProj(); loadMilestones()
+    loadProj(); loadMilestones(); loadWeekRev()
     supabase.from('hours_entries')
       .select('id, work_date, hours, raw_key, devs(name, hourly_cost)')
       .eq('project_id', id)
@@ -68,6 +76,14 @@ export default function ProjectDetail() {
     byWeek[ws].entries.push(e)
   })
   const weeks = Object.keys(byWeek).sort().reverse()
+  const allWeeks = [...new Set([...Object.keys(byWeek), ...Object.keys(weekRev)])].sort().reverse()
+
+  async function saveWeekBilled(ws, amount) {
+    await supabase.from('project_week_revenue').upsert(
+      { project_id: Number(id), week_start: ws, amount: Number(amount) || 0 },
+      { onConflict: 'project_id,week_start' })
+    loadWeekRev(); loadProj()
+  }
 
   return (
     <>
@@ -122,10 +138,71 @@ export default function ProjectDetail() {
               </table>
             </div>
 
-            <div className="paneltitle">Weekly breakdown</div>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="paneltitle">Weekly totals</div>
+              <table className="data">
+                <thead><tr>
+                  <th>Week</th>
+                  <th className="num">Hours</th>
+                  {isAdmin && <>
+                    <th className="num">Cost</th>
+                    {isHourly && <>
+                      <th className="num">Billed (gross)</th>
+                      <th className="num">Net −10%</th>
+                      <th className="num">Margin</th>
+                    </>}
+                  </>}
+                </tr></thead>
+                <tbody>
+                  {allWeeks.map((ws) => {
+                    const w = byWeek[ws] || { hours: 0, cost: 0 }
+                    const billed = weekRev[ws] || 0
+                    const wMargin = net(billed) - w.cost
+                    return (
+                      <tr key={ws}>
+                        <td className="mono">{fmtWeek(ws)}</td>
+                        <td className="num">{hrs(w.hours)}</td>
+                        {isAdmin && <>
+                          <td className="num">{money(w.cost)}</td>
+                          {isHourly && <>
+                            <td className="num">
+                              <input type="number" className="mono" min="0" step="10" defaultValue={billed || ''}
+                                key={ws + ':' + billed}
+                                placeholder={Number(proj.billing_rate) > 0 ? '@rate ' + money(w.hours * proj.billing_rate) : '0'}
+                                onBlur={(e) => { if (Number(e.target.value || 0) !== billed) saveWeekBilled(ws, e.target.value) }}
+                                style={{ background: 'transparent', border: '1px solid var(--line2)', borderRadius: 6, padding: '2px 6px', width: 110, textAlign: 'right' }} />
+                            </td>
+                            <td className="num mono" style={{ color: 'var(--mut)' }}>{billed > 0 ? money(net(billed)) : '—'}</td>
+                            <td className={'num ' + (billed > 0 ? (wMargin >= 0 ? 'pos' : 'neg') : '')}>{billed > 0 ? money(wMargin) : '—'}</td>
+                          </>}
+                        </>}
+                      </tr>
+                    )
+                  })}
+                  <tr style={{ fontWeight: 600 }}>
+                    <td>Total</td>
+                    <td className="num">{hrs(proj.total_hours)}</td>
+                    {isAdmin && <>
+                      <td className="num">{money(proj.total_cost)}</td>
+                      {isHourly && <>
+                        <td className="num">{money(proj.gross_revenue)}</td>
+                        <td className="num">{money(proj.net_revenue)}</td>
+                        <td className={'num ' + (margin >= 0 ? 'pos' : 'neg')}>{money(margin)}</td>
+                      </>}
+                    </>}
+                  </tr>
+                </tbody>
+              </table>
+              {isAdmin && isHourly && (
+                <div className="feenote">
+                  Enter what was actually billed each week (gross) — not every logged hour gets billed. The placeholder shows hours × your reference rate as a starting point. Net and margin apply the 10% Upwork fee automatically.
+                </div>
+              )}
+            </div>
+
+            <div className="paneltitle">Daily detail</div>
             {weeks.map((ws) => {
               const w = byWeek[ws]
-              const billedNet = isHourly ? net(w.hours * Number(proj.billing_rate)) : null
               return (
                 <div className="weekblock" key={ws}>
                   <div className="weekhead">
@@ -133,9 +210,6 @@ export default function ProjectDetail() {
                     <span className="tot mono">
                       {hrs(w.hours)}
                       {isAdmin && <> · cost {money(w.cost)}</>}
-                      {isAdmin && isHourly && Number(proj.billing_rate) > 0 && <> · billed {money(billedNet)} net</>}
-                      {isAdmin && isHourly && Number(proj.billing_rate) > 0 &&
-                        <span className={billedNet - w.cost >= 0 ? 'pos' : 'neg'}> · {money(billedNet - w.cost)}</span>}
                     </span>
                   </div>
                   <table className="data">
@@ -217,7 +291,7 @@ function BillingPanel({ proj, milestones, onChanged }) {
       </div>
       {isHourly ? (
         <div className="feenote">
-          Upwork takes 10%: ${Number(rate || 0).toFixed(2)}/h quoted → <strong>${net(rate).toFixed(2)}/h net</strong> to us. All billed amounts are shown net.
+          Reference rate for quoting: ${Number(rate || 0).toFixed(2)}/h gross → <strong>${net(rate).toFixed(2)}/h net</strong> after Upwork's 10%. Actual billed amounts are entered week by week in the Weekly totals table — we don't bill every logged hour.
         </div>
       ) : (
         <>
