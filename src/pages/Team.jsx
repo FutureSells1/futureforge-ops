@@ -39,10 +39,24 @@ export default function Team() {
     if (!configured) return
     supabase.from('devs').select('id, name, active').order('name')
       .then(({ data, error }) => { if (error) setErr(error.message); else setDevs((data || []).filter((d) => d.active !== false)) })
-    supabase.from('hours_entries')
-      .select('dev_id, work_date, hours, raw_key, is_overhead')
-      .gte('work_date', mondays[0]).lte('work_date', addDays(mondays[mondays.length - 1], 6))
-      .then(({ data, error }) => { if (error) setErr(error.message); else setEntries(data || []) })
+    // paginate: Supabase caps each query at 1000 rows — one query
+    // truncated silently and dropped whole devs from the grid
+    ;(async () => {
+      const PAGE = 1000
+      let all = [], from = 0
+      for (;;) {
+        const { data, error } = await supabase.from('hours_entries')
+          .select('dev_id, work_date, hours, raw_key, is_overhead')
+          .gte('work_date', mondays[0]).lte('work_date', addDays(mondays[mondays.length - 1], 6))
+          .order('id')
+          .range(from, from + PAGE - 1)
+        if (error) { setErr(error.message); return }
+        all = all.concat(data || [])
+        if (!data || data.length < PAGE) break
+        from += PAGE
+      }
+      setEntries(all)
+    })()
   }, [])
 
   if (!configured) return <div className="notice">Connect Supabase first — see the README.</div>
