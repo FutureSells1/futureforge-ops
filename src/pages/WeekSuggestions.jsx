@@ -15,7 +15,7 @@ import { labsEnabled } from '../lib/labs.js'
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const NAMES = { tc: 'Thiago — tc', bc: 'Bernardo — bc', nn: 'Nick — nn' }
-const CELL = 13, DAY_START = 0, DAY_END = 24
+const CELL = 22
 const WIN_START = 8 * 60, WIN_END = 23 * 60   // suggestions land 08:00–23:00
 const MIN_CHUNK = 20                           // never suggest a slot under 20min
 
@@ -210,6 +210,16 @@ export default function WeekSuggestions() {
     setSelected(null); setPop(null)
     await supabase.from('week_log_plan').delete().eq('id', row.id)
   }
+  async function clearAll() {
+    if (!window.confirm('Clear all ' + acctPlan.length + ' suggestion(s) for ' + NAMES[acct] + ' · week of ' + weekStart + '?')) return
+    setBusy(true)
+    const { error } = await supabase.from('week_log_plan').delete().eq('account', acct).eq('week_start', weekStart)
+    if (error) { setMsg('Clear failed: ' + error.message); setBusy(false); return }
+    setPlan((prev) => prev.filter((r) => r.account !== acct))
+    setSelected(null); setPop(null)
+    setMsg('Cleared.')
+    setBusy(false)
+  }
 
   function selectRow(r, ev) {
     ev.stopPropagation()
@@ -219,6 +229,16 @@ export default function WeekSuggestions() {
     if (y + 120 > window.innerHeight) y = ev.clientY - 120
     setPop({ x, y })
   }
+
+  // display range: zoom the grid to the hours that actually have content (+1h pad)
+  const [dispS, dispE] = useMemo(() => {
+    let lo = WIN_START, hi = WIN_END
+    acctMirror.forEach((b) => { lo = Math.min(lo, b.start_min); hi = Math.max(hi, b.end_min) })
+    acctPlan.forEach((r) => { lo = Math.min(lo, r.start_min); hi = Math.max(hi, r.end_min) })
+    lo = Math.max(0, Math.floor(lo / 60) * 60 - 60)
+    hi = Math.min(1440, Math.ceil(hi / 60) * 60 + 60)
+    return [lo, hi]
+  }, [acctMirror, acctPlan])
 
   const codeOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.project_code || p.channel) : '?' }
   const nameOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.display_name || p.channel) : '?' }
@@ -259,6 +279,9 @@ export default function WeekSuggestions() {
         <span className="mono" style={{ fontSize: 13 }}>week of {weekStart}</span>
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off + 1)} disabled={off >= 0}>▶</button>
         <span style={{ marginLeft: 'auto' }} />
+        {acctPlan.length > 0 && (
+          <button className="ghost" onClick={clearAll} disabled={busy || !loaded}>Clear all</button>
+        )}
         <button className="primary" onClick={generate} disabled={busy || !loaded}>
           {busy ? 'Planning…' : (acctPlan.length ? 'Regenerate suggestions' : 'Generate suggestions')}
         </button>
@@ -278,28 +301,28 @@ export default function WeekSuggestions() {
 
           <div className="grid">
             <div className="axis">
-              {Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i).map((h) => (
+              {Array.from({ length: (dispE - dispS) / 60 }, (_, i) => dispS / 60 + i).map((h) => (
                 <div key={h} className="hourband mono" style={{ height: CELL * 2 }}>{pad(h)}–{pad(h + 1)}</div>
               ))}
             </div>
             {DAYS.map((dname, d) => (
               <div className="daycol" key={d}>
                 <div className="dayhead">{dname}</div>
-                <div className="daybody" style={{ height: (DAY_END - DAY_START) * 2 * CELL }}>
-                  {Array.from({ length: DAY_END - DAY_START - 1 }, (_, i) => i + 1).map((h) => (
+                <div className="daybody" style={{ height: (dispE - dispS) / 30 * CELL }}>
+                  {Array.from({ length: (dispE - dispS) / 60 - 1 }, (_, i) => i + 1).map((h) => (
                     <div key={h} className="hline" style={{ top: h * CELL * 2 }} />
                   ))}
                   {acctMirror.filter((b) => b.day === d).map((b) => (
                     <div key={b.id} className="blk"
                       title={'on Upwork · ' + mlab(b.start_min) + '–' + mlab(b.end_min) + (b.confirmed_project_id ? ' · ' + nameOf(b.confirmed_project_id) : '')}
                       style={{
-                        top: (b.start_min - DAY_START * 60) / 30 * CELL,
+                        top: (b.start_min - dispS) / 30 * CELL,
                         height: Math.max(5, (b.end_min - b.start_min) / 30 * CELL),
-                        background: COLORS[acct], opacity: .5, cursor: 'default',
+                        background: COLORS[acct], opacity: .45, cursor: 'default',
                       }} />
                   ))}
                   {acctPlan.filter((r) => r.day === d).map((r) => {
-                    const h = Math.max(8, (r.end_min - r.start_min) / 30 * CELL)
+                    const h = Math.max(10, (r.end_min - r.start_min) / 30 * CELL)
                     const col = COLORS[acct]
                     const done = r.status === 'done'
                     return (
@@ -307,12 +330,14 @@ export default function WeekSuggestions() {
                         className={'blk plan' + (selected === r.id ? ' sel' : '') + (done ? ' done' : '')}
                         title={(done ? '✓ logged · ' : 'log: ') + nameOf(r.project_id) + ' · ' + mlab(r.start_min) + '–' + mlab(r.end_min)}
                         style={{
-                          top: (r.start_min - DAY_START * 60) / 30 * CELL, height: h,
-                          background: done ? col : `repeating-linear-gradient(45deg, ${col} 0 6px, transparent 6px 11px)`,
-                          border: '1px solid ' + col,
+                          top: (r.start_min - dispS) / 30 * CELL, height: h,
+                          background: done
+                            ? `color-mix(in srgb, ${col} 78%, transparent)`
+                            : `color-mix(in srgb, ${col} 24%, transparent)`,
+                          border: `1px solid color-mix(in srgb, ${col} 75%, transparent)`,
                         }}
                         onClick={(e) => selectRow(r, e)}>
-                        {h >= 22 && <span className="plantag">{done ? '✓ ' : ''}{codeOf(r.project_id)}</span>}
+                        {h >= 13 && <span className="plantag">{done ? '✓ ' : ''}{codeOf(r.project_id)}</span>}
                       </div>
                     )
                   })}
@@ -321,7 +346,7 @@ export default function WeekSuggestions() {
             ))}
           </div>
           <div className="legend">
-            faded solid = already on Upwork (mirror) · striped = suggested slot, click to mark logged / remove · solid + ✓ = done
+            faded solid = already on Upwork (mirror) · glass = suggested slot, click to mark logged / remove · filled + ✓ = done
           </div>
         </div>
 
