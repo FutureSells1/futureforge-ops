@@ -98,7 +98,7 @@ export default function Projects() {
           <table className="data">
             <thead><tr>
               <th>Channel</th><th>Account</th><th>Client name</th><th>Display name</th>
-              {isAdmin && <><th className="num">Quoted revenue</th><th>Actions</th></>}
+              {isAdmin && <><th>Billing</th><th className="num">Rate $/h</th><th>Actions</th></>}
             </tr></thead>
             <tbody>
               {rows.map((p) => (
@@ -108,7 +108,18 @@ export default function Projects() {
                   {isAdmin ? <>
                     <td><InlineText value={p.client_name} onSave={(v) => update(p.id, { client_name: v })} placeholder="e.g. Caio Tralba" /></td>
                     <td><InlineText value={p.display_name} onSave={(v) => update(p.id, { display_name: v })} placeholder="e.g. Webflow Website" /></td>
-                    <td className="num"><InlineMoney value={p.quoted_revenue} onSave={(v) => update(p.id, { quoted_revenue: v })} /></td>
+                    <td>
+                      <select value={p.billing_type || 'hourly'} onChange={(e) => update(p.id, { billing_type: e.target.value })}
+                        style={{ fontSize: 12, padding: '3px 6px' }}>
+                        <option value="hourly">hourly</option>
+                        <option value="fixed">fixed</option>
+                      </select>
+                    </td>
+                    <td className="num">
+                      {(p.billing_type || 'hourly') === 'hourly'
+                        ? <InlineMoney value={p.billing_rate} onSave={(v) => update(p.id, { billing_rate: v })} />
+                        : <Link to={'/projects/' + p.id} className="muted" style={{ fontSize: 12, textDecoration: 'underline' }}>milestones →</Link>}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="ghost" style={{ padding: '3px 10px', fontSize: 11.5 }}
                         onClick={() => update(p.id, { status: p.status === 'active' ? 'archived' : 'active' })}>

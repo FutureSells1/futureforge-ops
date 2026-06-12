@@ -50,7 +50,7 @@ export default function Layout({ session, isAdmin }) {
         </div>
       </aside>
       <main className="main">
-        <Outlet context={{ isAdmin }} />
+        <Outlet context={{ isAdmin, session }} />
       </main>
       {isAdmin && <WarningsDrawer open={drawer} onClose={() => setDrawer(false)} />}
     </div>

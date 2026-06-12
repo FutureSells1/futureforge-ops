@@ -111,3 +111,13 @@ tr.click:hover td{background:var(--panel2);}
 .weekblock{border:1px solid var(--line);border-radius:11px;margin-bottom:12px;overflow:hidden;}
 .weekhead{display:flex;align-items:baseline;gap:10px;padding:10px 14px;background:var(--panel2);font-size:13px;font-weight:600;}
 .weekhead .tot{margin-left:auto;font-weight:400;color:var(--mut);font-size:12.5px;}
+
+/* ---------- v4: tabs, milestones, estimation ---------- */
+.tabbar{display:flex;gap:8px;margin:4px 0 16px;border-bottom:1px solid var(--line);padding-bottom:0;}
+.tabbar button{background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--mut);padding:8px 14px;font-size:13.5px;font-weight:500;}
+.tabbar button:hover{color:var(--ink);}
+.tabbar button.on{color:var(--ink);border-bottom-color:var(--tc);}
+.feenote{font-size:11.5px;color:var(--warnc);margin-top:6px;}
+.mrow td{vertical-align:middle;}
+.estgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:14px;}
+.typepill{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line2);border-radius:5px;padding:1px 6px;color:var(--mut);}

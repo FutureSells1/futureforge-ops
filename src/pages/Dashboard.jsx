@@ -52,18 +52,18 @@ export default function Dashboard() {
             <thead><tr>
               <th>Channel</th><th>Account</th><th>Client</th>
               <th className="num">Hours</th>
-              {isAdmin && <><th className="num">Cost</th><th className="num">Revenue</th><th className="num">Margin</th></>}
+              {isAdmin && <><th className="num">Cost</th><th className="num">Revenue (net)</th><th className="num">Margin</th></>}
             </tr></thead>
             <tbody>
               {shown.map((r) => (
                 <tr key={r.id} className="click" onClick={() => navigate('/projects/' + r.id)}>
-                  <td className="mono">{r.channel}</td>
+                  <td className="mono">{r.channel} {r.billing_type === 'fixed' && <span className="typepill">fixed</span>}</td>
                   <td><span className="pill"><span className="swatch" style={{ background: COLORS[r.account] }} />{ACCOUNTS[r.account] || r.account}</span></td>
                   <td>{r.client_name || '—'}</td>
                   <td className="num">{hrs(r.total_hours)}</td>
                   {isAdmin && <>
                     <td className="num">{money(r.total_cost)}</td>
-                    <td className="num">{money(r.total_revenue)}</td>
+                    <td className="num">{money(r.net_revenue)}</td>
                     <td className={'num ' + (Number(r.margin) >= 0 ? 'pos' : 'neg')}>{money(r.margin)}</td>
                   </>}
                 </tr>
