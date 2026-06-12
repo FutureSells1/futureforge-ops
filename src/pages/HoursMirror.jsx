@@ -259,7 +259,7 @@ export default function HoursMirror() {
           {auto ? 'Auto-watch on' : 'Auto-watch off'}
         </button>
         <label style={{ fontSize: 13, color: 'var(--mut)', display: 'flex', alignItems: 'center', gap: 6 }}>
-          every <input type="number" value={ivl} min="8" max="300" style={{ width: 64 }}
+          every <input type="number" inputMode="decimal" value={ivl} min="8" max="300" style={{ width: 64 }}
             onChange={(e) => setIvl(e.target.value)} /> s
         </label>
         <button className="ghost" onClick={readNow} disabled={!sharing}>Read now</button>

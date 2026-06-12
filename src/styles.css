@@ -228,3 +228,58 @@ html{-webkit-text-size-adjust:100%;}
   /* drawers full-width */
   .drawer{width:100vw !important;max-width:100vw !important;}
 }
+
+/* ============================================================
+   NATIVE FEEL (mobile only) — transitions, press states, PTR
+   ============================================================ */
+.ptr{display:none;}
+
+@media (max-width: 760px){
+  /* kill the web tells: overscroll glow/flash, double-tap zoom, text selection on chrome */
+  html{background:var(--bg);}
+  html,body{overscroll-behavior-y:none;}
+  body{touch-action:manipulation;}
+  .bottomnav,.mtopbar,.tabbar,button,.pcard,.bnav-item{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  ::-webkit-scrollbar{display:none;}
+
+  /* screen transition: new page slides up + fades, like a native push */
+  .pagein{animation:pageIn .26s cubic-bezier(.25,.8,.35,1);}
+  @keyframes pageIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+  /* press feedback — everything tappable responds to touch */
+  .pcard[role="button"]:active{transform:scale(.975);transition:transform .08s;}
+  .pcard{transition:transform .15s, background .12s;}
+  .bnav-item:active{transform:scale(.92);}
+  .bnav-item{transition:transform .12s, background .15s, color .15s;}
+  button:active{transform:scale(.96);}
+  button{transition:transform .1s, background .15s, color .15s, border-color .15s;}
+  tr.click:active{background:var(--panel2);}
+
+  /* iOS nav title (fades in when the page header scrolls under the bar) */
+  .mtopbar{min-height:54px;}
+  .mtop-title{position:absolute;left:50%;transform:translateX(-50%) translateY(4px);font-weight:600;font-size:14.5px;
+    opacity:0;transition:opacity .18s, transform .18s;pointer-events:none;white-space:nowrap;}
+  .mtop-title.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* pull-to-refresh spinner */
+  .ptr{display:block;position:fixed;top:calc(54px + env(safe-area-inset-top));left:50%;z-index:35;color:var(--tc);
+    width:26px;height:26px;pointer-events:none;}
+  .ptr svg{width:26px;height:26px;}
+  .ptr .spin{animation:ptrspin .7s linear infinite;}
+  @keyframes ptrspin{to{transform:rotate(360deg);}}
+
+  /* tabs -> iOS segmented control */
+  .tabbar{background:var(--panel2);border:1px solid var(--line);border-bottom:1px solid var(--line);
+    border-radius:11px;padding:3px;gap:3px;}
+  .tabbar button{border-radius:8px;min-height:38px;font-size:13px;border-bottom:0;}
+  .tabbar button.on{background:var(--panel);color:var(--ink);border-bottom:0;box-shadow:0 1px 6px rgba(0,0,0,.35);}
+
+  /* skeleton shimmer */
+  .skel{border-radius:6px;background:linear-gradient(90deg,var(--panel) 25%,var(--line) 50%,var(--panel) 75%);
+    background-size:200% 100%;animation:shimmer 1.15s ease-in-out infinite;}
+  @keyframes shimmer{to{background-position:-200% 0;}}
+
+  /* cards feel layered like native list cells */
+  .plist .pcard{box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  .card{box-shadow:0 1px 4px rgba(0,0,0,.2);}
+}

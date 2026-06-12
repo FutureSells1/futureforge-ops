@@ -26,7 +26,21 @@ export default function Dashboard() {
     </>
   )
   if (err) return (<><Head /><div className="notice warn">Couldn't load data: {err}</div></>)
-  if (!rows) return (<><Head /><div className="muted">Loading…</div></>)
+  if (!rows) return (
+    <>
+      <Head />
+      <div className="d-only muted">Loading…</div>
+      <div className="m-only plist" aria-hidden>
+        {[...Array(6)].map((_, i) => (
+          <div className="pcard" key={i}>
+            <div className="skel" style={{ height: 14, width: '55%' }} />
+            <div className="skel" style={{ height: 10, width: '35%', marginTop: 8 }} />
+            <div className="skel" style={{ height: 12, width: '80%', marginTop: 12 }} />
+          </div>
+        ))}
+      </div>
+    </>
+  )
 
   const needle = q.trim().toLowerCase()
   const shown = rows.filter((r) =>

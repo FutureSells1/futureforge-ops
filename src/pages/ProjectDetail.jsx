@@ -166,7 +166,7 @@ export default function ProjectDetail() {
                           <td className="num">{money(w.cost)}</td>
                           {isHourly && <>
                             <td className="num">
-                              <input type="number" className="mono" min="0" step="10" defaultValue={billed || ''}
+                              <input type="number" inputMode="decimal" className="mono" min="0" step="10" defaultValue={billed || ''}
                                 key={ws + ':' + billed}
                                 placeholder={Number(proj.billing_rate) > 0 ? '@rate ' + money(w.hours * proj.billing_rate) : '0'}
                                 onBlur={(e) => { if (Number(e.target.value || 0) !== billed) saveWeekBilled(ws, e.target.value) }}
@@ -284,7 +284,7 @@ function BillingPanel({ proj, milestones, onChanged }) {
         {isHourly && (
           <>
             <span className="muted" style={{ fontSize: 13 }}>client rate $/h</span>
-            <input type="number" className="mono" min="0" step="0.5" value={rate}
+            <input type="number" inputMode="decimal" className="mono" min="0" step="0.5" value={rate}
               onChange={(e) => setRate(e.target.value)} onBlur={saveRate} style={{ width: 90 }} />
           </>
         )}
@@ -310,7 +310,7 @@ function BillingPanel({ proj, milestones, onChanged }) {
                       onFocus={(e) => (e.target.style.borderColor = 'var(--line2)')} />
                   </td>
                   <td className="num">
-                    <input type="number" className="mono" min="0" step="50" defaultValue={m.amount}
+                    <input type="number" inputMode="decimal" className="mono" min="0" step="50" defaultValue={m.amount}
                       onBlur={(e) => { if (Number(e.target.value) !== Number(m.amount)) updateMilestone(m, { amount: Number(e.target.value) || 0 }) }}
                       style={{ background: 'transparent', border: '1px solid var(--line2)', padding: '2px 6px', width: 100, textAlign: 'right' }} />
                   </td>
@@ -417,7 +417,7 @@ function EditStat({ label, value, onSave }) {
   return (
     <div className="card">
       <div className="muted" style={{ fontSize: 11.5, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</div>
-      <input type="number" className="mono" min="0" step="0.5" value={v}
+      <input type="number" inputMode="decimal" className="mono" min="0" step="0.5" value={v}
         onChange={(e) => setV(e.target.value)}
         onBlur={() => { if (Number(v) !== Number(value)) onSave(v) }}
         style={{ fontSize: 20, fontWeight: 500, marginTop: 4, background: 'transparent', border: '1px solid var(--line2)', borderRadius: 7, padding: '2px 8px', width: '100%' }} />

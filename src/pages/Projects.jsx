@@ -210,7 +210,7 @@ function InlineMoney({ value, onSave }) {
   const [v, setV] = useState(value ?? 0)
   useEffect(() => setV(value ?? 0), [value])
   return (
-    <input type="number" className="mono" value={v} min="0" step="50"
+    <input type="number" inputMode="decimal" className="mono" value={v} min="0" step="50"
       onChange={(e) => setV(e.target.value)}
       onBlur={() => { if (Number(v) !== Number(value)) onSave(Number(v) || 0) }}
       style={{ background: 'transparent', border: '1px solid transparent', padding: '3px 6px', width: 110, textAlign: 'right' }}
