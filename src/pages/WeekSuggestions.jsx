@@ -26,7 +26,11 @@ function memoChunks(tasks) {
   ;(tasks || []).forEach((t0) => {
     let t = String(t0).trim()
     if (!t) return
-    if (t.length > MEMO_LIMIT) t = t.slice(0, MEMO_LIMIT - 1) + '…'
+    if (t.length > MEMO_LIMIT) {
+      const cut = t.slice(0, MEMO_LIMIT - 1)
+      const sp = cut.lastIndexOf(' ')
+      t = (sp > 60 ? cut.slice(0, sp) : cut) + '…'
+    }
     if (!cur) cur = t
     else if ((cur + ' · ' + t).length <= MEMO_LIMIT) cur += ' · ' + t
     else { chunks.push(cur); cur = t }
@@ -167,10 +171,69 @@ export default function WeekSuggestions() {
     return m
   }, [milestones])
 
+  // ---- AI memo writer ----
+  function clampMemo(t) {
+    t = String(t || '').replace(/\s+/g, ' ').trim()
+    if (t.length <= MEMO_LIMIT) return t
+    const cut = t.slice(0, MEMO_LIMIT - 1)
+    const sp = cut.lastIndexOf(' ')
+    return (sp > 60 ? cut.slice(0, sp) : cut) + '…'
+  }
+  async function aiMemos(items) {
+    const key = localStorage.getItem('uhm_key')
+    const prompt = `You write Upwork work-diary memos for a dev agency. For each item below, summarize the raw task notes into polished memos.
+Rules: each memo is plain text, professional, specific, COMPLETE sentences/phrases — never cut mid-sentence. HARD limit ${MEMO_LIMIT - 4} characters per memo. Write between 1 and the item's max_memos memos; use more memos to cover more work rather than cramming. No bullets, no numbering, no quotes.
+Respond ONLY with raw JSON, no markdown fences: {"items":[{"key":"<same key>","memos":["..."]}]}
+
+ITEMS:
+${JSON.stringify(items)}`
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
+    })
+    const data = await res.json()
+    if (data.error) throw new Error(data.error.message || data.error.type)
+    const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n')
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+    const map = {}
+    ;(parsed.items || []).forEach((it) => {
+      const memos = (it.memos || []).map(clampMemo).filter(Boolean)
+      if (memos.length) map[it.key] = memos
+    })
+    return map
+  }
+
   // ---- the planner ----
-  async function generate() {
-    if (!window.confirm('Generate suggestions for ' + NAMES[acct] + ' · week of ' + weekStart + '? This replaces the existing plan for this account/week.')) return
+  async function generate(useAI) {
+    if (useAI && !localStorage.getItem('uhm_key')) { setMsg('Add your Anthropic API key on the Hours Mirror page first (same key as the Mirror).'); return }
+    if (!window.confirm('Generate suggestions' + (useAI ? ' with AI memos' : '') + ' for ' + NAMES[acct] + ' · week of ' + weekStart + '? This replaces the existing plan for this account/week.')) return
     setBusy(true); setMsg('')
+
+    // memo provider: deterministic chunking, or Claude-written memos
+    let memoProvider = (pid, d) => memoChunks((taskStats.byDay[pid] || [])[d] || [])
+    if (useAI) {
+      try {
+        setMsg('Asking Claude to write memos…')
+        const items = []
+        accProjects.forEach((p) => {
+          const pid = String(p.id)
+          for (let d = 0; d < 7; d++) {
+            const tasks = (taskStats.byDay[pid] || [])[d] || []
+            if (!tasks.length) continue
+            const needMin = r10(Math.max(0, ((workedStats.byDay[pid] || [])[d] || 0) - ((loggedStats.byDay[pid] || [])[d] || 0)))
+            if (needMin < MIN_CHUNK) continue
+            items.push({ key: pid + '|' + d, project: p.display_name || p.channel, planned_hours: +(needMin / 60).toFixed(1), max_memos: Math.max(1, Math.min(4, Math.floor(needMin / MIN_CHUNK))), raw_tasks: tasks })
+          }
+        })
+        if (items.length) {
+          const aiMap = await aiMemos(items)
+          memoProvider = (pid, d) => aiMap[pid + '|' + d] || memoChunks((taskStats.byDay[pid] || [])[d] || [])
+        }
+        setMsg('')
+      } catch (e) { setBusy(false); setMsg('AI memo writing failed: ' + e.message + ' — existing plan untouched.'); return }
+    }
+
     await supabase.from('week_log_plan').delete().eq('account', acct).eq('week_start', weekStart)
 
     // free gaps per day: 08:00–23:00 minus everything mirrored (assigned or not)
@@ -241,7 +304,7 @@ export default function WeekSuggestions() {
     merged = []
     groups.forEach((segs, k) => {
       const [pid, dStr] = k.split('|')
-      const chunks = memoChunks((taskStats.byDay[pid] || [])[Number(dStr)] || [])
+      const chunks = memoProvider(pid, Number(dStr))
       // split largest segments until we have one per memo chunk (where possible)
       segs.sort((a, b) => a.start_min - b.start_min)
       while (chunks.length > 1 && segs.length < chunks.length) {
@@ -358,8 +421,11 @@ export default function WeekSuggestions() {
         {acctPlan.length > 0 && (
           <button className="ghost" onClick={clearAll} disabled={busy || !loaded}>Clear all</button>
         )}
-        <button className="primary" onClick={generate} disabled={busy || !loaded}>
+        <button className="primary" onClick={() => generate(false)} disabled={busy || !loaded}>
           {busy ? 'Planning…' : (acctPlan.length ? 'Regenerate suggestions' : 'Generate suggestions')}
+        </button>
+        <button className="ghost" onClick={() => generate(true)} disabled={busy || !loaded} title="Same placement — Claude writes complete, polished memos that fit 144 chars">
+          ✨ Generate with AI
         </button>
       </div>
 
