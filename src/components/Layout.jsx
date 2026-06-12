@@ -10,7 +10,7 @@ export default function Layout({ session, isAdmin }) {
   const links = [
     { to: '/', label: 'Dashboard', end: true },
     { to: '/projects', label: 'Projects' },
-    ...(isAdmin ? [{ to: '/mirror', label: 'Hours Mirror' }] : []),
+    ...(isAdmin ? [{ to: '/team', label: 'Team' }, { to: '/mirror', label: 'Hours Mirror' }] : []),
   ]
 
   useEffect(() => {

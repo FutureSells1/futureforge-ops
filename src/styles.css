@@ -121,3 +121,26 @@ tr.click:hover td{background:var(--panel2);}
 .mrow td{vertical-align:middle;}
 .estgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:14px;}
 .typepill{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line2);border-radius:5px;padding:1px 6px;color:var(--mut);}
+
+
+/* ---------- Team page ---------- */
+.teamgrid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:900px){.teamgrid2{grid-template-columns:1fr;}}
+.hbar{display:flex;align-items:center;gap:10px;margin:7px 0;}
+.hbar-name{width:130px;font-size:12.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hbar-track{flex:1;height:14px;background:var(--panel2);border-radius:7px;overflow:hidden;}
+.hbar-fill{display:block;height:100%;background:linear-gradient(90deg,var(--warnc),#e0856a);border-radius:7px;}
+.hbar-val{width:55px;text-align:right;font-size:12px;color:var(--mut);}
+.trend{display:flex;align-items:flex-end;gap:8px;height:130px;padding-top:14px;}
+.trend-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;cursor:pointer;height:100%;}
+.trend-bar{width:70%;background:var(--panel2);border:1px solid var(--line2);border-radius:4px 4px 0 0;transition:background .15s;}
+.trend-col:hover .trend-bar{background:var(--line2);}
+.trend-bar.sel{background:linear-gradient(180deg,var(--warnc),#e0856a);border-color:transparent;}
+.trend-val{font-size:10px;color:var(--mut);margin-bottom:2px;height:13px;}
+.trend-lbl{font-size:9.5px;color:var(--mut);margin-top:4px;}
+.compliance td{text-align:center;}
+.compliance .cell-ok{background:rgba(80,200,120,.12);color:var(--posc,#5ec98e);}
+.compliance .cell-bad{background:rgba(224,98,98,.16);color:#e88;font-weight:600;}
+.compliance .cell-wk{color:var(--mut);}
+.compliance .cell-na{color:var(--line2);}
+.legend{padding:1px 7px;border-radius:4px;font-size:10.5px;margin-right:4px;}

@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Projects from './pages/Projects.jsx'
 import ProjectDetail from './pages/ProjectDetail.jsx'
 import HoursMirror from './pages/HoursMirror.jsx'
+import Team from './pages/Team.jsx'
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = loading
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />
+        {isAdmin && <Route path="/team" element={<Team />} />}
         {isAdmin && <Route path="/mirror" element={<HoursMirror />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
