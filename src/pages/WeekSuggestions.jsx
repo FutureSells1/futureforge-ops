@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { COLORS, money, hrs, net } from '../lib/format.js'
 import { supabase, configured } from '../lib/supabase.js'
-import { labsEnabled } from '../lib/labs.js'
 
 // ============================================================
 // Week Suggestions (Labs) — the logging plan.
@@ -34,7 +33,7 @@ function dayIdx(workDate, weekStart) {
 }
 
 export default function WeekSuggestions() {
-  const labs = useMemo(() => labsEnabled() && configured, [])
+  const labs = configured
   const [off, setOff] = useState(0)
   const weekStart = useMemo(() => mondayOf(off), [off])
   const weekEnd = useMemo(() => plusDays(weekStart, 6), [weekStart])
@@ -263,7 +262,7 @@ export default function WeekSuggestions() {
   if (!labs) return (
     <>
       <div className="pagehead"><h1>Week Suggestions</h1></div>
-      <div className="card"><div className="muted">This is a Labs feature — turn on 🧪 Labs in Settings, then reload.</div></div>
+      <div className="card"><div className="muted">No database connected.</div></div>
     </>
   )
 

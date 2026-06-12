@@ -5,7 +5,6 @@ import WarningsDrawer from './WarningsDrawer.jsx'
 import NotificationsPanel from './NotificationsPanel.jsx'
 import SettingsSheet from './SettingsSheet.jsx'
 import { bioSupported, bioEnabled, bioEnable, bioDisable } from '../lib/biolock.js'
-import { labsEnabled } from '../lib/labs.js'
 
 const I = {
   dash: <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>,
@@ -50,10 +49,8 @@ export default function Layout({ session, isAdmin }) {
     ...(isAdmin ? [
       { to: '/team', label: 'Team', icon: I.team },
       { to: '/mirror', label: 'Hours Mirror', short: 'Mirror', icon: I.mirror },
-      ...(labsEnabled() ? [
-        { to: '/suggestions', label: 'Week Suggestions', short: 'Plan', icon: I.plan },
-        { to: '/assistant', label: 'Assistant', short: 'AI', icon: I.ai },
-      ] : []),
+      { to: '/suggestions', label: 'Week Suggestions', short: 'Plan', icon: I.plan },
+      { to: '/assistant', label: 'Assistant', short: 'AI', icon: I.ai },
     ] : []),
   ]
 

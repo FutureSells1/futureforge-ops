@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { bioSupported, bioEnabled, bioEnable, bioDisable } from '../lib/biolock.js'
 import { pushSupported, pushEnabled, pushSubscribe, pushUnsubscribe, pushBlockedByIOS } from '../lib/push.js'
-import { labsEnabled, setLabs } from '../lib/labs.js'
 
 export default function SettingsSheet({ open, onClose, session, isAdmin, onOpenWarnings, warnCount }) {
   const [bio, setBio] = useState(bioEnabled())
@@ -10,7 +9,6 @@ export default function SettingsSheet({ open, onClose, session, isAdmin, onOpenW
   const [push, setPush] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [testMsg, setTestMsg] = useState('')
-  const [labs, setLabsState] = useState(labsEnabled())
 
   React.useEffect(() => { if (open) pushEnabled().then(setPush) }, [open])
 
@@ -78,19 +76,6 @@ export default function SettingsSheet({ open, onClose, session, isAdmin, onOpenW
             <span>Send test notification</span>
             {testMsg && <span className="muted" style={{ fontSize: 10.5 }}>{testMsg}</span>}
           </button>
-        )}
-        {isAdmin && (
-          <>
-            <button className="sheetrow" onClick={() => { setLabs(!labs); setLabsState(!labs) }}>
-              <span>🧪 Labs (beta features)</span>
-              <span className={'switch' + (labs ? ' on' : '')}><span className="knob" /></span>
-            </button>
-            {labs && (
-              <div className="muted" style={{ fontSize: 11.5, padding: '2px 4px 8px' }}>
-                Mirror suggestions &amp; week summary are on — this device only. Reopen the Mirror page to apply.
-              </div>
-            )}
-          </>
         )}
         {isAdmin && (
           <button className="sheetrow" onClick={() => { onClose(); onOpenWarnings() }}>

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { ACCOUNTS, COLORS, money, hrs, net } from '../lib/format.js'
 import { supabase, configured } from '../lib/supabase.js'
-import { labsEnabled } from '../lib/labs.js'
 
 // ============================================================
 // Hours Mirror.
@@ -37,11 +36,11 @@ const SCHEMA_PLAIN = `{"blocks":[{"day":"Mon","start":"09:00","end":"10:30","lab
 const SCHEMA_SUGG = `{"blocks":[{"day":"Mon","start":"09:00","end":"10:30","label":"memo/contract text if visible else empty","project":"channel-from-list-or-null","project_confidence":"high|medium|low"}],"confidence":"high|medium|low","notes":"anything ambiguous"}`
 
 export default function HoursMirror() {
-  const labs = useMemo(() => labsEnabled() && configured, [])
+  const labs = configured
   const weekStart = useMemo(() => mondayOf(), [])
   const weekEnd = useMemo(() => plusDays(weekStart, 6), [weekStart])
 
-  const [blocks, setBlocks] = useState(() => labsEnabled() ? [] : JSON.parse(localStorage.getItem('uhm_blocks') || '[]'))
+  const [blocks, setBlocks] = useState(() => configured ? [] : JSON.parse(localStorage.getItem('uhm_blocks') || '[]'))
   const [acct, setAcct] = useState('tc')
   const [sharing, setSharing] = useState(false)
   const [auto, setAuto] = useState(false)
@@ -60,7 +59,7 @@ export default function HoursMirror() {
   const [weekRev, setWeekRev] = useState({})         // project_id -> pushed amount
   const [billedDraft, setBilledDraft] = useState({}) // project_id -> input string
   const [pushedOk, setPushedOk] = useState({})       // project_id -> true after push
-  const [loaded, setLoaded] = useState(!labsEnabled())
+  const [loaded, setLoaded] = useState(!configured)
 
   const videoRef = useRef(null)
   const streamRef = useRef(null)
@@ -407,7 +406,7 @@ export default function HoursMirror() {
     <>
       <div className="pagehead">
         <h1>Hours Mirror</h1>
-        <span className="sub">log on Upwork · it watches · free time stays obvious · all times UTC{labs ? ' · 🧪 labs: week of ' + weekStart : ''}</span>
+        <span className="sub">log on Upwork · it watches · free time stays obvious · all times UTC{labs ? ' · week of ' + weekStart : ''}</span>
       </div>
       <div className="m-only notice" style={{ marginBottom: 12 }}>
         The Hours Mirror needs desktop Chrome — phones can't screen-share the Upwork window. Open this page on your Mac on Sundays; everything else in the app works great from here.

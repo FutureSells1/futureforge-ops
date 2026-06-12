@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
-import { labsEnabled } from '../lib/labs.js'
 
 // ============================================================
 // Assistant (Labs) — chat with full project context.
@@ -50,7 +49,7 @@ function toolSummary(tu, byChannel) {
 
 export default function Assistant() {
   const { session } = useOutletContext()
-  const labs = labsEnabled() && configured
+  const labs = configured
   const weekStart = mondayOf()
 
   const [messages, setMessages] = useState([])   // Anthropic-shaped
@@ -308,7 +307,7 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
   if (!labs) return (
     <>
       <div className="pagehead"><h1>Assistant</h1></div>
-      <div className="card"><div className="muted">This is a Labs feature — turn on 🧪 Labs in Settings, then reload.</div></div>
+      <div className="card"><div className="muted">No database connected.</div></div>
     </>
   )
 
