@@ -230,6 +230,9 @@ export default function HoursMirror() {
         <h1>Hours Mirror</h1>
         <span className="sub">log on Upwork · it watches · free time stays obvious · all times UTC</span>
       </div>
+      <div className="m-only notice" style={{ marginBottom: 12 }}>
+        The Hours Mirror needs desktop Chrome — phones can't screen-share the Upwork window. Open this page on your Mac on Sundays; everything else in the app works great from here.
+      </div>
 
       <div className="card bar">
         {!hasKey ? (

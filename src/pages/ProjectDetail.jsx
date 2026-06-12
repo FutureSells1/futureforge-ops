@@ -96,7 +96,7 @@ export default function ProjectDetail() {
         {proj.client_name && <span className="sub">· {proj.client_name}</span>}
       </div>
 
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="statrow" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Total hours" value={hrs(proj.total_hours)} />
         {isAdmin && <>
           <Stat label="Cost (dev rates)" value={money(proj.total_cost)} />
@@ -123,7 +123,7 @@ export default function ProjectDetail() {
           <>
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="paneltitle">By developer</div>
-              <table className="data">
+              <div className="scrollx"><table className="data">
                 <thead><tr><th>Dev</th><th className="num">Hours</th>{isAdmin && <th className="num">Cost</th>}<th className="num">% of project</th></tr></thead>
                 <tbody>
                   {devRows.map(([name, v]) => (
@@ -135,12 +135,12 @@ export default function ProjectDetail() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="paneltitle">Weekly totals</div>
-              <table className="data">
+              <div className="scrollx"><table className="data">
                 <thead><tr>
                   <th>Week</th>
                   <th className="num">Hours</th>
@@ -192,7 +192,7 @@ export default function ProjectDetail() {
                     </>}
                   </tr>
                 </tbody>
-              </table>
+              </table></div>
               {isAdmin && isHourly && (
                 <div className="feenote">
                   Enter what was actually billed each week (gross) — not every logged hour gets billed. The placeholder shows hours × your reference rate as a starting point. Net and margin apply the 10% Upwork fee automatically.
@@ -212,7 +212,7 @@ export default function ProjectDetail() {
                       {isAdmin && <> · cost {money(w.cost)}</>}
                     </span>
                   </div>
-                  <table className="data">
+                  <div className="scrollx"><table className="data">
                     <tbody>
                       {w.entries.map((e) => (
                         <tr key={e.id}>
@@ -224,7 +224,7 @@ export default function ProjectDetail() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 </div>
               )
             })}
@@ -295,7 +295,7 @@ function BillingPanel({ proj, milestones, onChanged }) {
         </div>
       ) : (
         <>
-          <table className="data" style={{ marginTop: 10 }}>
+          <div className="scrollx"><table className="data" style={{ marginTop: 10 }}>
             <thead><tr>
               <th>Milestone</th><th className="num">Amount (gross)</th><th className="num">Net after 10%</th>
               <th style={{ width: 110 }}>Released?</th><th style={{ width: 60 }} />
@@ -339,7 +339,7 @@ function BillingPanel({ proj, milestones, onChanged }) {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
             <button className="ghost" onClick={addMilestone}>+ Add milestone</button>
             <span className="feenote" style={{ marginTop: 0 }}>Amounts are what the client pays (gross). Upwork takes 10% — the net column shows what reaches us. Margin counts released milestones only, net.</span>

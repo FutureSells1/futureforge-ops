@@ -132,7 +132,7 @@ export default function Team() {
         {selWeek === mondays[mondays.length - 1] && <span className="typepill">current week</span>}
       </div>
 
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="statrow" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
         <Card label="Unassigned this week" value={hrs(totalUnassigned)} />
         <Card label="Most unassigned" value={topDev && topDev.unassigned > 0 ? topDev.name + ' · ' + hrs(topDev.unassigned) : '—'} small />
         <Card label="Under-8h flags" value={totalFlags} tone={totalFlags > 0 ? 'neg' : 'pos'} />
@@ -172,7 +172,7 @@ export default function Team() {
       {/* compliance grid */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="paneltitle">Daily 8h check — every dev should log ≥ {DAILY_MIN}h per weekday (any type counts, unassigned included)</div>
-        <table className="data compliance">
+        <div className="scrollx"><table className="data compliance sticky1">
           <thead><tr>
             <th>Dev</th>
             {DOW.map((d) => <th className="num" key={d}>{d}</th>)}
@@ -197,7 +197,7 @@ export default function Team() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
         <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
           <span className="cell-ok legend">≥{DAILY_MIN}h</span> <span className="cell-bad legend">&lt;{DAILY_MIN}h on a past weekday</span> <span className="cell-wk legend">weekend hours (not flagged)</span> <span className="cell-na legend">today / future</span>
           — flags only apply to weekdays that have already passed.
@@ -207,7 +207,7 @@ export default function Team() {
       {/* unassigned-only grid */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="paneltitle">Unassigned hours by day — {fmtWeek(selWeek)}</div>
-        <table className="data compliance">
+        <div className="scrollx"><table className="data compliance sticky1">
           <thead><tr>
             <th>Dev</th>
             {DOW.map((d) => <th className="num" key={d}>{d}</th>)}
@@ -225,7 +225,7 @@ export default function Team() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
         <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
           only hours logged as <span className="mono">unassigned</span> — sorted by weekly total.
         </div>

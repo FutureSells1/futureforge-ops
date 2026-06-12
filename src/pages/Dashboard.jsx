@@ -47,7 +47,8 @@ export default function Dashboard() {
         </div>
         {shown.length === 0 ? (
           <div className="notice">No projects match "{q}".</div>
-        ) : (
+        ) : (<>
+          <div className="d-only">
           <table className="data">
             <thead><tr>
               <th>Channel</th><th>Account</th><th>Client</th>
@@ -70,7 +71,31 @@ export default function Dashboard() {
               ))}
             </tbody>
           </table>
-        )}
+          </div>
+          <div className="m-only plist">
+            {shown.map((r) => (
+              <div className="pcard" key={r.id} onClick={() => navigate('/projects/' + r.id)} role="button">
+                <div className="pcard-top">
+                  <span className="mono" style={{ fontSize: 13.5 }}>{r.channel} {r.billing_type === 'fixed' && <span className="typepill">fixed</span>}</span>
+                  <span className="swatch" style={{ background: COLORS[r.account] }} />
+                </div>
+                {(r.client_name || r.display_name) && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                    {[r.client_name, r.display_name].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                <div className="pcard-stats">
+                  <span className="pstat"><em>hours</em><b className="mono">{hrs(r.total_hours)}</b></span>
+                  {isAdmin && <>
+                    <span className="pstat"><em>net rev</em><b className="mono">{money(r.net_revenue)}</b></span>
+                    <span className="pstat"><em>margin</em><b className={'mono ' + (Number(r.margin) >= 0 ? 'pos' : 'neg')}>{money(r.margin)}</b></span>
+                  </>}
+                  <span className="chev">›</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>)}
       </div>
     </>
   )

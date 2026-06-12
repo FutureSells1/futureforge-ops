@@ -94,7 +94,8 @@ export default function Projects() {
       <div className="card">
         {!rows ? <div className="muted">Loading…</div> : rows.length === 0 ? (
           <div className="notice">No projects yet — add one above or wait for the Zap to deliver the first Slack channel.</div>
-        ) : (
+        ) : (<>
+          <div className="d-only">
           <table className="data">
             <thead><tr>
               <th>Channel</th><th>Account</th><th>Client name</th><th>Display name</th>
@@ -138,6 +139,45 @@ export default function Projects() {
               ))}
             </tbody>
           </table>
+          </div>
+          <div className="m-only plist">
+            {rows.map((pr) => (
+              <div className="pcard" key={pr.id} style={pr.status === 'archived' ? { opacity: .45 } : null}>
+                <div className="pcard-top">
+                  <Link to={'/projects/' + pr.id} className="mono" style={{ fontSize: 13.5, textDecoration: 'underline', textDecorationColor: 'var(--line2)' }}>{pr.channel}</Link>
+                  <span className="swatch" style={{ background: COLORS[pr.account] }} />
+                </div>
+                {isAdmin ? (
+                  <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                    <InlineText value={pr.client_name} onSave={(v) => update(pr.id, { client_name: v })} placeholder="client name" />
+                    <InlineText value={pr.display_name} onSave={(v) => update(pr.id, { display_name: v })} placeholder="display name" />
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select value={pr.billing_type || 'hourly'} onChange={(e) => update(pr.id, { billing_type: e.target.value })}>
+                        <option value="hourly">hourly</option>
+                        <option value="fixed">fixed</option>
+                      </select>
+                      {(pr.billing_type || 'hourly') === 'hourly'
+                        ? <InlineMoney value={pr.billing_rate} onSave={(v) => update(pr.id, { billing_rate: v })} />
+                        : <Link to={'/projects/' + pr.id} className="muted" style={{ fontSize: 12.5, textDecoration: 'underline' }}>milestones →</Link>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="ghost" style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={() => update(pr.id, { status: pr.status === 'active' ? 'archived' : 'active' })}>
+                        {pr.status === 'active' ? 'archive' : 'restore'}
+                      </button>
+                      <button className="ghost" style={{ flex: 1, justifyContent: 'center', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                        onClick={() => deleteProject(pr)}>delete</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                    {[pr.client_name, pr.display_name].filter(Boolean).join(' · ') || '—'}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
         )}
       </div>
     </>
