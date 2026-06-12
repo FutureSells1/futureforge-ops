@@ -172,11 +172,14 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
             supabase.from('project_week_revenue').select('week_start, amount').eq('project_id', p.id).order('week_start', { ascending: false }).limit(8),
             supabase.from('project_milestones').select('name, amount, released, position').eq('project_id', p.id).order('position'),
             supabase.from('project_estimates').select('*').eq('project_id', p.id).maybeSingle(),
-            supabase.from('hours_entries').select('work_date, hours, dev_id').eq('project_id', p.id).gte('work_date', plusDays(weekStart, -14)).limit(2000),
+            supabase.from('hours_entries').select('work_date, hours, dev_id, task').eq('project_id', p.id).gte('work_date', plusDays(weekStart, -14)).limit(2000),
           ])
-          const byDate = {}
-          ;(he.data || []).forEach((e) => { byDate[e.work_date] = (byDate[e.work_date] || 0) + Number(e.hours) })
-          return ok(JSON.stringify({ channel: p.channel, billing: p.billing_type, rate_ref: p.billing_rate, weekly_billed_gross: rev.data, milestones: ms.data, estimate: es.data, dev_hours_last_3wks_by_date: byDate }))
+          const byDate = {}, tasks = []
+          ;(he.data || []).forEach((e) => {
+            byDate[e.work_date] = (byDate[e.work_date] || 0) + Number(e.hours)
+            if (e.task) String(e.task).split(' \u00b7 ').forEach((t) => { t = t.trim(); if (t && !tasks.includes(t)) tasks.push(t) })
+          })
+          return ok(JSON.stringify({ channel: p.channel, billing: p.billing_type, rate_ref: p.billing_rate, weekly_billed_gross: rev.data, milestones: ms.data, estimate: es.data, dev_hours_last_3wks_by_date: byDate, tasks_last_3wks: tasks.slice(0, 40) }))
         }
         case 'plan_add': {
           const p = proj(i.channel); if (!p) return fail('unknown channel ' + i.channel)

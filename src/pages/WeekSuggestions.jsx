@@ -63,7 +63,7 @@ export default function WeekSuggestions() {
     ;(async () => {
       const [pj, he, bl, pl, ms] = await Promise.all([
         supabase.from('projects').select('id, channel, project_code, display_name, client_name, account, billing_type, billing_rate').eq('status', 'active'),
-        supabase.from('hours_entries').select('project_id, work_date, hours').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
+        supabase.from('hours_entries').select('project_id, work_date, hours, task').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
         supabase.from('upwork_blocks').select('*').eq('week_start', weekStart),
         supabase.from('week_log_plan').select('*').eq('week_start', weekStart),
         supabase.from('project_milestones').select('project_id, released'),
@@ -78,6 +78,26 @@ export default function WeekSuggestions() {
   const accProjects = projects.filter((p) => p.account === acct)
   const acctMirror = mirror.filter((b) => b.account === acct)
   const acctPlan = plan.filter((r) => r.account === acct)
+
+  // task details: distinct tasks per project (week) and per project/day
+  const taskStats = useMemo(() => {
+    const week = {}, byDay = {}
+    entries.forEach((e) => {
+      if (e.project_id == null || !e.task) return
+      const pid = String(e.project_id)
+      if (!projById.has(pid) || projById.get(pid).account !== acct) return
+      const d = dayIdx(e.work_date, weekStart)
+      if (d < 0 || d > 6) return
+      String(e.task).split(' \u00b7 ').forEach((t) => {
+        t = t.trim(); if (!t) return
+        ;(week[pid] = week[pid] || []).includes(t) || week[pid].push(t)
+        const dd = (byDay[pid] = byDay[pid] || [[], [], [], [], [], [], []])[d]
+        dd.includes(t) || dd.push(t)
+      })
+    })
+    return { week, byDay }
+  }, [entries, acct, projById, weekStart])
+  const dayTasks = (pid, d) => ((taskStats.byDay[String(pid)] || [])[d] || []).join(' \u00b7 ')
 
   // worked minutes per project (and per day) from the timesheets
   const workedStats = useMemo(() => {
@@ -329,7 +349,10 @@ export default function WeekSuggestions() {
               <div key={x.id} className={'agrow' + (x.row.status === 'done' ? ' donerow' : '')}
                 style={{ borderLeft: '3px solid ' + COLORS[acct] }}>
                 <span className="mono agtime">{mlab(x.s)}–{mlab(x.e)}</span>
-                <span className="agname">{nameOf(x.pid)}</span>
+                <span className="agname">
+                  {nameOf(x.pid)}
+                  {dayTasks(x.pid, selDay) && <span className="agtask">{dayTasks(x.pid, selDay)}</span>}
+                </span>
                 <button className="ghost agbtn" onClick={() => setDone(x.row, x.row.status !== 'done')}>{x.row.status === 'done' ? '↺' : '✓'}</button>
                 <button className="ghost agbtn" onClick={() => removeRow(x.row)}>✕</button>
               </div>
@@ -351,6 +374,9 @@ export default function WeekSuggestions() {
                   <div className="pstat"><em>Planned</em><b>{hrs(r.planned / 60)}</b></div>
                   <div className="pstat"><em>To log</em><b style={{ color: r.toLog >= MIN_CHUNK ? 'var(--warnc)' : 'var(--ok)' }}>{hrs(r.toLog / 60)}</b></div>
                 </div>
+                {(taskStats.week[r.pid] || []).length > 0 && (
+                  <div className="muted tasksline" style={{ marginTop: 8 }}>{taskStats.week[r.pid].join(' \u00b7 ')}</div>
+                )}
               </div>
             ))}
           </div>
@@ -440,6 +466,9 @@ export default function WeekSuggestions() {
                                 ? '≈' + money(r.toLog / 60 * Number(r.p.billing_rate)) + ' gross · ' + money(net(r.toLog / 60 * Number(r.p.billing_rate))) + ' net'
                                 : 'hourly · no rate set')}
                           </div>
+                          {(taskStats.week[r.pid] || []).length > 0 && (
+                            <div className="muted tasksline">{taskStats.week[r.pid].join(' \u00b7 ')}</div>
+                          )}
                         </td>
                         <td className="num">{hrs(r.worked / 60)}</td>
                         <td className="num">{hrs(r.logged / 60)}</td>
@@ -465,6 +494,9 @@ export default function WeekSuggestions() {
           <span className="mono" style={{ fontSize: 11 }}>
             {DAYS[selRow.day]} {mlab(selRow.start_min)}–{mlab(selRow.end_min)} · {nameOf(selRow.project_id)}
           </span>
+          {dayTasks(selRow.project_id, selRow.day) && (
+            <span style={{ fontSize: 11, color: 'var(--mut)' }}>tasks that day: {dayTasks(selRow.project_id, selRow.day)}</span>
+          )}
           <div style={{ display: 'flex', gap: 7 }}>
             <button onClick={(e) => { e.stopPropagation(); setDone(selRow, selRow.status !== 'done') }}>
               {selRow.status === 'done' ? 'Mark not logged' : '✓ Mark logged'}
