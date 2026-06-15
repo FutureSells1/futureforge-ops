@@ -40,7 +40,7 @@ function memoChunks(tasks) {
 }
 
 const pad = (n) => String(n).padStart(2, '0')
-const mlab = (m) => (m >= 1440 ? '24:00' : pad(Math.floor(m / 60)) + ':' + pad(m % 60))
+const mlab = (m) => pad(Math.floor((m % 1440) / 60)) + ':' + pad(m % 60)
 const r10 = (m) => Math.round(m / 10) * 10
 const isoDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 function mondayOf(offsetWeeks = 0) {
@@ -502,7 +502,7 @@ ${JSON.stringify(items)}`
           <div className="grid">
             <div className="axis">
               {Array.from({ length: (dispE - dispS) / 60 }, (_, i) => dispS / 60 + i).map((h) => (
-                <div key={h} className="hourband mono" style={{ height: CELL * 2 }}>{pad(h)}–{h + 1 >= 24 ? '24' : pad(h + 1)}</div>
+                <div key={h} className="hourband mono" style={{ height: CELL * 2 }}>{pad(h)}–{pad((h + 1) % 24)}</div>
               ))}
             </div>
             {DAYS.map((dname, d) => (
