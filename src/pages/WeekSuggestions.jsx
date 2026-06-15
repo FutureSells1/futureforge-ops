@@ -15,7 +15,7 @@ import { supabase, configured } from '../lib/supabase.js'
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const NAMES = { tc: 'Thiago — tc', bc: 'Bernardo — bc', nn: 'Nick — nn' }
 const CELL = 22
-const WIN_START = 8 * 60, WIN_END = 23 * 60   // suggestions land 08:00–23:00
+const WIN_START = 0, WIN_END = 1440          // suggestions can land anywhere 00:00–24:00
 const MIN_CHUNK = 20                           // never suggest a slot under 20min
 const MEMO_LIMIT = 144                         // Upwork memo character limit
 
@@ -40,7 +40,7 @@ function memoChunks(tasks) {
 }
 
 const pad = (n) => String(n).padStart(2, '0')
-const mlab = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60)
+const mlab = (m) => (m >= 1440 ? '24:00' : pad(Math.floor(m / 60)) + ':' + pad(m % 60))
 const r10 = (m) => Math.round(m / 10) * 10
 const isoDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 function mondayOf(offsetWeeks = 0) {
@@ -236,7 +236,7 @@ ${JSON.stringify(items)}`
 
     await supabase.from('week_log_plan').delete().eq('account', acct).eq('week_start', weekStart)
 
-    // free gaps per day: 08:00–23:00 minus everything mirrored (assigned or not)
+    // free gaps per day: full day (00:00–24:00) minus everything mirrored (assigned or not)
     const gaps = DAYS.map((_, d) => {
       const occ = acctMirror.filter((b) => b.day === d).map((b) => [b.start_min, b.end_min]).sort((a, b) => a[0] - b[0])
       let cur = WIN_START
@@ -259,30 +259,19 @@ ${JSON.stringify(items)}`
       return left
     }
 
-    const remaining = {}
-    accProjects.forEach((p) => {
-      const pid = String(p.id)
-      const need = r10(Math.max(0, (workedStats.tot[pid] || 0) - (loggedStats.tot[pid] || 0)))
-      if (need >= MIN_CHUNK) remaining[pid] = need
-    })
-
+    // Day-locked: hours worked on a given day are logged on THAT day only.
+    // For each day, place each project's (worked - already-logged) hours into
+    // that day's free gaps. Nothing ever spills to another day.
     const rows = []
-    // pass 1: put each project's hours on the days the devs actually worked them
+    let unplaced = 0
     for (let d = 0; d < 7; d++) {
-      const order = Object.keys(remaining).sort((a, b) => ((workedStats.byDay[b] || [])[d] || 0) - ((workedStats.byDay[a] || [])[d] || 0))
+      const order = accProjects.map((p) => String(p.id))
+        .sort((a, b) => ((workedStats.byDay[b] || [])[d] || 0) - ((workedStats.byDay[a] || [])[d] || 0))
       for (const pid of order) {
         const dayNeed = r10(Math.max(0, ((workedStats.byDay[pid] || [])[d] || 0) - ((loggedStats.byDay[pid] || [])[d] || 0)))
-        const want = Math.min(remaining[pid], dayNeed)
-        if (want < MIN_CHUNK) continue
-        const left = takeFrom(d, want, pid, rows)
-        remaining[pid] -= (want - left)
-      }
-    }
-    // pass 2: whatever didn't fit on its own day goes wherever there's space
-    for (const pid of Object.keys(remaining)) {
-      for (let d = 0; d < 7 && remaining[pid] >= MIN_CHUNK; d++) {
-        const left = takeFrom(d, remaining[pid], pid, rows)
-        remaining[pid] = left
+        if (dayNeed < MIN_CHUNK) continue
+        const left = takeFrom(d, dayNeed, pid, rows)
+        unplaced += left
       }
     }
     // merge adjacent same-project slots
@@ -335,8 +324,7 @@ ${JSON.stringify(items)}`
     const { data, error } = await supabase.from('week_log_plan').insert(merged).select('*')
     if (error) { setMsg('Save failed: ' + error.message); setBusy(false); return }
     setPlan((prev) => prev.filter((r) => r.account !== acct).concat(data))
-    const unplaced = Object.values(remaining).reduce((a, b) => a + b, 0)
-    setMsg('Planned ' + data.length + ' slot(s).' + (unplaced >= MIN_CHUNK ? ' ⚠ ' + (unplaced / 60).toFixed(1) + 'h didn\u2019t fit in free gaps — mirror first or clear space.' : ''))
+    setMsg('Planned ' + data.length + ' slot(s).' + (unplaced >= MIN_CHUNK ? ' ⚠ ' + (unplaced / 60).toFixed(1) + 'h couldn\u2019t fit on its own day (that day is nearly full on Upwork already).' : ''))
     setBusy(false)
   }
 
@@ -370,14 +358,7 @@ ${JSON.stringify(items)}`
   }
 
   // display range: zoom the grid to the hours that actually have content (+1h pad)
-  const [dispS, dispE] = useMemo(() => {
-    let lo = WIN_START, hi = WIN_END
-    acctMirror.forEach((b) => { lo = Math.min(lo, b.start_min); hi = Math.max(hi, b.end_min) })
-    acctPlan.forEach((r) => { lo = Math.min(lo, r.start_min); hi = Math.max(hi, r.end_min) })
-    lo = Math.max(0, Math.floor(lo / 60) * 60 - 60)
-    hi = Math.min(1440, Math.ceil(hi / 60) * 60 + 60)
-    return [lo, hi]
-  }, [acctMirror, acctPlan])
+  const [dispS, dispE] = [0, 1440]   // always show the full day, 00:00–24:00
 
   const codeOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.project_code || p.channel) : '?' }
   const nameOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.display_name || p.channel) : '?' }
@@ -396,7 +377,7 @@ ${JSON.stringify(items)}`
   const freeTotal = useMemo(() => {
     let occ = 0
     acctMirror.forEach((b) => { occ += b.end_min - b.start_min })
-    return (7 * (WIN_END - WIN_START) - occ) / 60
+    return (7 * 1440 - occ) / 60
   }, [acctMirror])
 
   if (!labs) return (
@@ -521,7 +502,7 @@ ${JSON.stringify(items)}`
           <div className="grid">
             <div className="axis">
               {Array.from({ length: (dispE - dispS) / 60 }, (_, i) => dispS / 60 + i).map((h) => (
-                <div key={h} className="hourband mono" style={{ height: CELL * 2 }}>{pad(h)}–{pad(h + 1)}</div>
+                <div key={h} className="hourband mono" style={{ height: CELL * 2 }}>{pad(h)}–{h + 1 >= 24 ? '24' : pad(h + 1)}</div>
               ))}
             </div>
             {DAYS.map((dname, d) => (
@@ -606,8 +587,8 @@ ${JSON.stringify(items)}`
               </div>
             )}
             <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-              Worked = dev timesheets · On Upwork = confirmed mirror blocks · free space this week ≈ {freeTotal.toFixed(0)}h (08:00–23:00).
-              Mirror an account before generating so "on Upwork" is accurate — suggestions only fill genuinely free gaps.
+              Worked = dev timesheets · On Upwork = confirmed mirror blocks · hours are placed on the same day they were worked.
+              Mirror an account before generating so "on Upwork" is accurate — each day's hours stay on that day and only fill that day's free gaps.
             </div>
           </div>
         </div>

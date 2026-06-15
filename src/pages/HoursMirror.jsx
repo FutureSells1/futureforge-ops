@@ -17,7 +17,7 @@ const NAMES = { tc: 'Thiago — tc', bc: 'Bernardo — bc', nn: 'Nick — nn' }
 const CELL = 13, DAY_START = 0, DAY_END = 24
 
 const pad = (n) => String(n).padStart(2, '0')
-const mlab = (m) => pad(Math.floor(m / 60)) + ':' + pad(m % 60)
+const mlab = (m) => (m >= 1440 ? '24:00' : pad(Math.floor(m / 60)) + ':' + pad(m % 60))
 const toMin = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0) }
 const isoDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 function mondayOf() {
