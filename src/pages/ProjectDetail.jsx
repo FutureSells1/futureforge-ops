@@ -45,7 +45,7 @@ export default function ProjectDetail() {
     if (!configured) return
     loadProj(); loadMilestones(); loadWeekRev()
     supabase.from('hours_entries')
-      .select('id, work_date, hours, raw_key, devs(name, hourly_cost)')
+      .select('id, work_date, hours, raw_key, is_pm, devs(name, hourly_cost)')
       .eq('project_id', id)
       .order('work_date', { ascending: false })
       .then(({ data, error }) => { if (error) setErr(error.message); else setEntries(data) })
@@ -98,6 +98,7 @@ export default function ProjectDetail() {
 
       <div className="statrow" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
         <Stat label="Total hours" value={hrs(proj.total_hours)} />
+        {proj.pm_hours > 0 && <Stat label="of which PM" value={hrs(proj.pm_hours)} />}
         {isAdmin && <>
           <Stat label="Cost (dev rates)" value={money(proj.total_cost)} />
           <Stat label={isHourly ? 'Billed · net of Upwork 10%' : 'Released · net of Upwork 10%'} value={money(proj.net_revenue)} />
@@ -218,7 +219,7 @@ export default function ProjectDetail() {
                         <tr key={e.id}>
                           <td style={{ width: 56, color: 'var(--mut)' }}>{dayName(e.work_date)}</td>
                           <td className="mono" style={{ width: 110 }}>{e.work_date}</td>
-                          <td>{e.devs?.name}</td>
+                          <td>{e.devs?.name}{e.is_pm && <span className="pmtag">PM</span>}</td>
                           <td className="num" style={{ width: 80 }}>{hrs(e.hours)}</td>
                           {isAdmin && <td className="num" style={{ width: 90 }}>{money(Number(e.hours) * Number(e.devs?.hourly_cost || 0))}</td>}
                         </tr>

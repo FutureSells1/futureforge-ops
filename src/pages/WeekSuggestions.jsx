@@ -89,7 +89,7 @@ export default function WeekSuggestions() {
     ;(async () => {
       const [pj, he, bl, pl, ms] = await Promise.all([
         supabase.from('projects').select('id, channel, project_code, display_name, client_name, account, billing_type, billing_rate').eq('status', 'active'),
-        supabase.from('hours_entries').select('project_id, work_date, hours, task').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
+        supabase.from('hours_entries').select('project_id, work_date, hours, task, is_pm').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
         supabase.from('upwork_blocks').select('*').eq('week_start', weekStart),
         supabase.from('week_log_plan').select('*').eq('week_start', weekStart),
         supabase.from('project_milestones').select('project_id, released'),
@@ -110,7 +110,7 @@ export default function WeekSuggestions() {
   const taskStats = useMemo(() => {
     const week = {}, byDay = {}
     entries.forEach((e) => {
-      if (e.project_id == null || !e.task) return
+      if (e.project_id == null || e.is_pm || !e.task) return
       const pid = String(e.project_id)
       if (!projById.has(pid) || projById.get(pid).account !== acct) return
       const d = dayIdx(e.work_date, weekStart)
@@ -131,7 +131,7 @@ export default function WeekSuggestions() {
   const workedStats = useMemo(() => {
     const tot = {}, byDay = {}
     entries.forEach((e) => {
-      if (e.project_id == null) return
+      if (e.project_id == null || e.is_pm) return   // PM hours are internal — never suggested
       const pid = String(e.project_id)
       if (!projById.has(pid) || projById.get(pid).account !== acct) return
       const d = dayIdx(e.work_date, weekStart)

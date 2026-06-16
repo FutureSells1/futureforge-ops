@@ -387,3 +387,8 @@ html{-webkit-text-size-adjust:100%;}
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .agtask{display:block;font-size:10.5px;color:var(--mut);margin-top:2px;white-space:normal;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+
+/* PM hours tag */
+.pmtag{display:inline-block;margin-left:7px;font-size:9px;font-weight:700;letter-spacing:.05em;
+  color:var(--warnc);background:rgba(232,179,57,.13);border:1px solid rgba(232,179,57,.35);
+  border-radius:5px;padding:1px 5px;vertical-align:middle;}

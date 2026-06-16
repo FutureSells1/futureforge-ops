@@ -114,7 +114,7 @@ export default function Assistant() {
       const h = hoursBy[k] || { t: 0, l: 0 }
       const e = estBy[k]
       return `- ${r.channel} | ${r.display_name || ''} | ${r.client_name || ''} | acct:${r.account} | ${r.billing_type}${p.billing_rate ? '@$' + p.billing_rate + '/h ref' : ''}` +
-        ` | lifetime: ${Number(r.total_hours || 0).toFixed(0)}h cost ${$(r.total_cost)} netRev ${$(r.net_revenue)} margin ${$(r.margin)}` +
+        ` | lifetime: ${Number(r.total_hours || 0).toFixed(0)}h${Number(r.pm_hours) > 0 ? ' (incl ' + Number(r.pm_hours).toFixed(0) + 'h PM)' : ''} cost ${$(r.total_cost)} netRev ${$(r.net_revenue)} margin ${$(r.margin)}` +
         ` | hrs thisWk ${h.t.toFixed(1)} lastWk ${h.l.toFixed(1)}` +
         ` | billed thisWk ${revBy[k + '|' + weekStart] != null ? $(revBy[k + '|' + weekStart]) : '—'} lastWk ${revBy[k + '|' + lastWeek] != null ? $(revBy[k + '|' + lastWeek]) : '—'}` +
         (r.billing_type === 'fixed' && msBy[k] ? ` | milestones ${msBy[k].rel}/${msBy[k].tot} released (${$(msBy[k].relAmt)} gross)` : '') +
@@ -138,7 +138,7 @@ export default function Assistant() {
     ).join('\n') || '(no mirrored blocks this week)'
 
     return `You are the FutureForge Ops assistant for Daniel (admin, agency owner). Today: ${isoDate(new Date())}. Current week (Mon): ${weekStart}.
-Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed. Times are 24h UTC, days Mon..Sun.
+Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "PM" hours = project-management time: internal cost only, never billed or logged on Upwork, and never suggested for logging. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed. Times are 24h UTC, days Mon..Sun.
 Rules for you: be concise and concrete; money in $ with gross/net stated. Use get_project_detail before deep claims about one project. Propose writes via tools ONE at a time with a one-line reason first; every write shows the user an approve/decline card. Use exact ids/channels from this snapshot — never invent them. If asked something the data can't answer, say so.
 
 === ACTIVE PROJECTS (lifetime + this week) ===
