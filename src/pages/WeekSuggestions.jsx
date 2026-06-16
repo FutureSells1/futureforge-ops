@@ -102,6 +102,7 @@ export default function WeekSuggestions() {
 
   const projById = useMemo(() => new Map(projects.map((p) => [String(p.id), p])), [projects])
   const accProjects = projects.filter((p) => p.account === acct)
+  const hourlyProjects = accProjects.filter((p) => p.billing_type === 'hourly')
   const acctMirror = mirror.filter((b) => b.account === acct)
   const acctPlan = plan.filter((r) => r.account === acct)
 
@@ -216,7 +217,7 @@ ${JSON.stringify(items)}`
       try {
         setMsg('Asking Claude to write memos…')
         const items = []
-        accProjects.forEach((p) => {
+        hourlyProjects.forEach((p) => {
           const pid = String(p.id)
           for (let d = 0; d < 7; d++) {
             const tasks = (taskStats.byDay[pid] || [])[d] || []
@@ -265,7 +266,7 @@ ${JSON.stringify(items)}`
     const rows = []
     let unplaced = 0
     for (let d = 0; d < 7; d++) {
-      const order = accProjects.map((p) => String(p.id))
+      const order = hourlyProjects.map((p) => String(p.id))
         .sort((a, b) => ((workedStats.byDay[b] || [])[d] || 0) - ((workedStats.byDay[a] || [])[d] || 0))
       for (const pid of order) {
         const dayNeed = r10(Math.max(0, ((workedStats.byDay[pid] || [])[d] || 0) - ((loggedStats.byDay[pid] || [])[d] || 0)))
