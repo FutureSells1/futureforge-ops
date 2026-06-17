@@ -74,7 +74,14 @@ export default function ProjectDetail() {
     byWeek[ws].hours += Number(e.hours)
     byWeek[ws].cost += Number(e.hours) * Number(e.devs?.hourly_cost || 0)
     byWeek[ws].entries.push(e)
+    if (e.is_pm) {
+      byWeek[ws].pmHours = (byWeek[ws].pmHours || 0) + Number(e.hours)
+      byWeek[ws].pmCost = (byWeek[ws].pmCost || 0) + Number(e.hours) * Number(e.devs?.hourly_cost || 0)
+    }
   })
+  const pmWeeks = Object.entries(byWeek).filter(([, v]) => v.pmHours > 0).sort((a, b) => b[0].localeCompare(a[0]))
+  const pmTotalHours = pmWeeks.reduce((a, [, v]) => a + v.pmHours, 0)
+  const pmTotalCost = pmWeeks.reduce((a, [, v]) => a + v.pmCost, 0)
   const weeks = Object.keys(byWeek).sort().reverse()
   const allWeeks = [...new Set([...Object.keys(byWeek), ...Object.keys(weekRev)])].sort().reverse()
 
@@ -138,6 +145,39 @@ export default function ProjectDetail() {
                 </tbody>
               </table></div>
             </div>
+
+            {pmWeeks.length > 0 && (
+              <div className="card" style={{ marginBottom: 16 }}>
+                <div className="paneltitle">
+                  PM hours by week
+                  <span className="pmtag" style={{ marginLeft: 8 }}>internal</span>
+                </div>
+                <div className="scrollx"><table className="data">
+                  <thead><tr>
+                    <th>Week</th>
+                    <th className="num">PM hours</th>
+                    {isAdmin && <th className="num">PM cost</th>}
+                  </tr></thead>
+                  <tbody>
+                    {pmWeeks.map(([ws, v]) => (
+                      <tr key={ws}>
+                        <td className="mono">{ws}</td>
+                        <td className="num">{hrs(v.pmHours)}</td>
+                        {isAdmin && <td className="num">{money(v.pmCost)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr>
+                    <td><strong>Total</strong></td>
+                    <td className="num"><strong>{hrs(pmTotalHours)}</strong></td>
+                    {isAdmin && <td className="num"><strong>{money(pmTotalCost)}</strong></td>}
+                  </tr></tfoot>
+                </table></div>
+                <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+                  Project-management time — not billed or logged on Upwork. Included in total hours &amp; margin as cost.
+                </div>
+              </div>
+            )}
 
             <div className="card" style={{ marginBottom: 16 }}>
               <div className="paneltitle">Weekly totals</div>
