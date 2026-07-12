@@ -23,8 +23,8 @@ const WRITE_TOOLS = new Set(['plan_add', 'plan_move', 'plan_delete', 'plan_mark_
 
 const TOOLS = [
   { name: 'get_project_detail', description: 'Fetch full detail for one project: weekly billed history, milestones, estimate, recent daily dev hours.', input_schema: { type: 'object', properties: { channel: { type: 'string', description: 'project channel, e.g. tc-ct-ocf' } }, required: ['channel'] } },
-  { name: 'plan_add', description: 'Add a suggested logging slot to the week plan (Week Suggestions page).', input_schema: { type: 'object', properties: { account: { type: 'string', enum: ['tc', 'bc', 'nn'] }, channel: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string', description: 'HH:MM 24h' }, end: { type: 'string', description: 'HH:MM 24h' }, memo: { type: 'string', description: 'Upwork memo for this block, max 144 chars' } }, required: ['account', 'channel', 'day', 'start', 'end'] } },
-  { name: 'plan_move', description: 'Move/resize an existing plan slot, optionally updating its memo. Use the plan row id from the data snapshot.', input_schema: { type: 'object', properties: { plan_id: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string' }, end: { type: 'string' }, memo: { type: 'string', description: 'new Upwork memo, max 144 chars' } }, required: ['plan_id', 'day', 'start', 'end'] } },
+  { name: 'plan_add', description: 'Add a suggested logging slot to the week plan (Week Suggestions page). Can target the current week or a future week (e.g. overflow when a week hits the Upwork logging cap).', input_schema: { type: 'object', properties: { account: { type: 'string', enum: ['tc', 'bc', 'nn'] }, channel: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string', description: 'HH:MM 24h' }, end: { type: 'string', description: 'HH:MM 24h' }, memo: { type: 'string', description: 'Upwork memo for this block, max 144 chars' }, week_start: { type: 'string', description: 'Monday YYYY-MM-DD of the target week. Omit for the current week; use next Monday for overflow.' } }, required: ['account', 'channel', 'day', 'start', 'end'] } },
+  { name: 'plan_move', description: 'Move/resize an existing plan slot, optionally updating its memo and/or moving it to a different week (e.g. pushing overflow to next week). Use the plan row id from the data snapshot.', input_schema: { type: 'object', properties: { plan_id: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string' }, end: { type: 'string' }, memo: { type: 'string', description: 'new Upwork memo, max 144 chars' }, week_start: { type: 'string', description: 'Monday YYYY-MM-DD to move the slot to a different week' } }, required: ['plan_id', 'day', 'start', 'end'] } },
   { name: 'plan_delete', description: 'Delete plan slots by id.', input_schema: { type: 'object', properties: { plan_ids: { type: 'array', items: { type: 'string' } } }, required: ['plan_ids'] } },
   { name: 'plan_mark_logged', description: 'Mark plan slots as logged (done) or not.', input_schema: { type: 'object', properties: { plan_ids: { type: 'array', items: { type: 'string' } }, logged: { type: 'boolean' } }, required: ['plan_ids', 'logged'] } },
   { name: 'set_week_billed', description: 'Set the manually billed GROSS amount for an hourly project for a given week (writes project_week_revenue).', input_schema: { type: 'object', properties: { channel: { type: 'string' }, week_start: { type: 'string', description: 'Monday, YYYY-MM-DD' }, amount: { type: 'number', description: 'gross USD before the 10% Upwork fee' } }, required: ['channel', 'week_start', 'amount'] } },
@@ -36,8 +36,8 @@ function toolSummary(tu, byChannel) {
   const i = tu.input || {}
   switch (tu.name) {
     case 'get_project_detail': return 'Look up ' + i.channel
-    case 'plan_add': return 'Add plan slot: ' + i.channel + ' · ' + i.day + ' ' + i.start + '–' + i.end + ' (' + i.account + ')'
-    case 'plan_move': return 'Move plan slot ' + String(i.plan_id).slice(0, 8) + ' → ' + i.day + ' ' + i.start + '–' + i.end
+    case 'plan_add': return 'Add plan slot: ' + i.channel + ' · ' + i.day + ' ' + i.start + '–' + i.end + ' (' + i.account + ')' + (i.week_start ? ' · week of ' + i.week_start : '')
+    case 'plan_move': return 'Move plan slot ' + String(i.plan_id).slice(0, 8) + ' → ' + i.day + ' ' + i.start + '–' + i.end + (i.week_start ? ' · week of ' + i.week_start : '')
     case 'plan_delete': return 'Delete ' + (i.plan_ids || []).length + ' plan slot(s)'
     case 'plan_mark_logged': return (i.logged ? 'Mark logged: ' : 'Mark NOT logged: ') + (i.plan_ids || []).length + ' slot(s)'
     case 'set_week_billed': return 'Set billed: ' + i.channel + ' · week ' + i.week_start + ' → $' + Number(i.amount).toFixed(2) + ' gross'
@@ -51,6 +51,7 @@ export default function Assistant() {
   const { session } = useOutletContext()
   const labs = configured
   const weekStart = mondayOf()
+  const nextWeek = plusDays(weekStart, 7)
 
   const [messages, setMessages] = useState([])   // Anthropic-shaped
   const [busy, setBusy] = useState(false)
@@ -59,12 +60,53 @@ export default function Assistant() {
   const [errs, setErrs] = useState('')
   const [hasKey, setHasKey] = useState(() => Boolean(localStorage.getItem('uhm_key')))
   const [keyInput, setKeyInput] = useState('')
+  const [chatId, setChatId] = useState(null)
+  const [chats, setChats] = useState([])
+  const [histOpen, setHistOpen] = useState(false)
 
   const mapsRef = useRef({ byChannel: new Map(), byId: new Map() })
   const loopRef = useRef(null) // { msgs, queue, results }
   const logRef = useRef(null)
 
   useEffect(() => { logRef.current?.scrollTo(0, 1e9) }, [messages, confirm, busy])
+
+  // chat history: load list on mount
+  useEffect(() => {
+    if (!labs) return
+    supabase.from('assistant_chats').select('id, title, updated_at').order('updated_at', { ascending: false }).limit(30)
+      .then(({ data }) => setChats(data || []))
+  }, [labs])
+
+  // autosave the conversation (debounced) after every exchange
+  const chatIdRef = useRef(null); chatIdRef.current = chatId
+  useEffect(() => {
+    if (!labs || messages.length === 0) return
+    const t = setTimeout(async () => {
+      const id = chatIdRef.current || crypto.randomUUID()
+      if (!chatIdRef.current) setChatId(id)
+      const firstUser = messages.find((m) => m.role === 'user' && typeof m.content === 'string')
+      const title = (firstUser ? String(firstUser.content) : 'New chat').slice(0, 60)
+      await supabase.from('assistant_chats').upsert({ id, title, messages, updated_at: new Date().toISOString() })
+      supabase.from('assistant_chats').select('id, title, updated_at').order('updated_at', { ascending: false }).limit(30)
+        .then(({ data }) => setChats(data || []))
+    }, 900)
+    return () => clearTimeout(t)
+  }, [messages, labs])
+
+  async function openChat(id) {
+    const { data } = await supabase.from('assistant_chats').select('messages').eq('id', id).maybeSingle()
+    if (data) { setMessages(data.messages || []); setChatId(id); setConfirm(null); loopRef.current = null; setErrs('') }
+    setHistOpen(false)
+  }
+  function newChat() {
+    setMessages([]); setChatId(null); setConfirm(null); loopRef.current = null; setErrs(''); setHistOpen(false)
+  }
+  async function deleteChat(id, ev) {
+    ev.stopPropagation()
+    await supabase.from('assistant_chats').delete().eq('id', id)
+    setChats((prev) => prev.filter((c) => c.id !== id))
+    if (chatId === id) newChat()
+  }
 
   function saveKey() {
     const v = keyInput.trim(); if (!v) return
@@ -79,7 +121,7 @@ export default function Assistant() {
       supabase.from('project_profitability').select('*'),
       supabase.from('projects').select('id, channel, display_name, client_name, account, billing_type, billing_rate, status'),
       supabase.from('project_estimates').select('*'),
-      supabase.from('week_log_plan').select('*').eq('week_start', weekStart),
+      supabase.from('week_log_plan').select('*').in('week_start', [weekStart, nextWeek]),
       supabase.from('upwork_blocks').select('id, account, day, start_min, end_min, label, suggested_project_id, suggestion_confidence, confirmed_project_id').eq('week_start', weekStart),
       supabase.from('project_week_revenue').select('project_id, week_start, amount').gte('week_start', lastWeek),
       supabase.from('hours_entries').select('project_id, work_date, hours, is_overhead').gte('work_date', lastWeek).lte('work_date', weekEnd).limit(8000),
@@ -121,10 +163,18 @@ export default function Assistant() {
         (e ? ` | est ${e.initial_hours}h init / ${e.remaining_hours}h remaining` : '')
     }).join('\n')
 
-    const planLines = (plan.data || []).filter((r) => r.status !== 'dismissed').map((r) => {
+    const planLine = (r) => {
       const p = mapsRef.current.byId.get(String(r.project_id))
       return `- id:${r.id} | ${r.account} | ${DAYS[r.day]} ${mlab(r.start_min)}–${mlab(r.end_min)} | ${p ? p.channel : '?'} | ${r.status}` + (r.memo ? ` | memo: "${String(r.memo).slice(0, 60)}"` : '')
-    }).join('\n') || '(empty — generate on the Week Suggestions page or add via plan_add)'
+    }
+    const livePlan = (plan.data || []).filter((r) => r.status !== 'dismissed')
+    const planLines = livePlan.filter((r) => r.week_start === weekStart).map(planLine).join('\n') || '(empty — generate on the Week Suggestions page or add via plan_add)'
+    const planLinesNext = livePlan.filter((r) => r.week_start === nextWeek).map(planLine).join('\n') || '(empty)'
+    // per-account load this week: mirrored + planned, vs the ~40h/account Upwork cap
+    const loadByAcct = { tc: 0, bc: 0, nn: 0 }
+    ;(blocks.data || []).forEach((b) => { if (loadByAcct[b.account] != null) loadByAcct[b.account] += (b.end_min - b.start_min) / 60 })
+    livePlan.filter((r) => r.week_start === weekStart && r.status !== 'done').forEach((r) => { if (loadByAcct[r.account] != null) loadByAcct[r.account] += (r.end_min - r.start_min) / 60 })
+    const capLine = ['tc', 'bc', 'nn'].map((a) => `${a}: ${loadByAcct[a].toFixed(1)}h of ~40h cap${loadByAcct[a] > 40 ? ' ⚠ OVER' : loadByAcct[a] > 36 ? ' (near cap)' : ''}`).join(' · ')
 
     const mirByAcct = { tc: { h: 0, c: 0 }, bc: { h: 0, c: 0 }, nn: { h: 0, c: 0 } }
     ;(blocks.data || []).forEach((b) => { const m = mirByAcct[b.account]; if (!m) return; const hh = (b.end_min - b.start_min) / 60; m.h += hh; if (b.confirmed_project_id) m.c += hh })
@@ -138,14 +188,21 @@ export default function Assistant() {
     ).join('\n') || '(no mirrored blocks this week)'
 
     return `You are the FutureForge Ops assistant for Daniel (admin, agency owner). Today: ${isoDate(new Date())}. Current week (Mon): ${weekStart}.
-Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "PM" hours = project-management time: internal cost only, never billed or logged on Upwork, and never suggested for logging. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed. Times are 24h UTC, days Mon..Sun.
+Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "PM" hours = project-management time: internal cost only, never billed or logged on Upwork, and never suggested for logging. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed.
+IMPORTANT — the ~40h/week Upwork cap: each Upwork account can log at most ~40h per week. When devs work more than can be logged this week, the overflow is logged NEXT week instead. When Daniel says hours must roll over (or an account is at/over cap), move or create the overflow slots in NEXT week's plan: use plan_move/plan_add with week_start='${nextWeek}' (Mondays only: '${weekStart}' = current, '${nextWeek}' = next). Prefer moving the lowest-priority / latest slots. Keep each account's current-week total ≤ 40h unless told otherwise. The Week Suggestions page shows next week via the ▶ arrow. Times are 24h UTC, days Mon..Sun.
 Rules for you: be concise and concrete; money in $ with gross/net stated. Use get_project_detail before deep claims about one project. Propose writes via tools ONE at a time with a one-line reason first; every write shows the user an approve/decline card. Use exact ids/channels from this snapshot — never invent them. If asked something the data can't answer, say so.
 
 === ACTIVE PROJECTS (lifetime + this week) ===
 ${projLines || '(none)'}
 
-=== WEEK PLAN (week of ${weekStart}) ===
+=== WEEK PLAN (current week, ${weekStart}) ===
 ${planLines}
+
+=== WEEK PLAN (NEXT week, ${nextWeek}) ===
+${planLinesNext}
+
+=== ACCOUNT LOAD vs UPWORK CAP (this week: mirrored + planned) ===
+${capLine}
 
 === MIRROR (on Upwork, week of ${weekStart}) ===
 tc ${mirByAcct.tc.h.toFixed(1)}h (${mirByAcct.tc.c.toFixed(1)} confirmed) · bc ${mirByAcct.bc.h.toFixed(1)}h (${mirByAcct.bc.c.toFixed(1)}) · nn ${mirByAcct.nn.h.toFixed(1)}h (${mirByAcct.nn.c.toFixed(1)})
@@ -156,6 +213,13 @@ ${blockLines}
 === OTHER ===
 Devs: ${(dv.data || []).filter((d) => d.active).map((d) => d.name + ' $' + d.hourly_cost + '/h').join(', ')}
 Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.count || 0} · Unmatched hours (all time): ${unmH.toFixed(1)}h`
+  }
+
+  // Mondays from the current week up to 4 weeks out
+  function validWeek(w) {
+    if (!w || !/^\d{4}-\d{2}-\d{2}$/.test(w)) return null
+    for (let i = 0; i <= 4; i++) if (plusDays(weekStart, i * 7) === w) return w
+    return null
   }
 
   // ---- tool execution ----
@@ -186,10 +250,11 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
           const d = dayIdx(i.day); if (d < 0) return fail('bad day ' + i.day)
           const s = toMin(i.start), e = toMin(i.end)
           if (!(e > s) || isNaN(s) || isNaN(e)) return fail('bad time range')
+          const ws = validWeek(i.week_start); if (i.week_start && !ws) return fail('week_start must be a Monday between ' + weekStart + ' and 4 weeks out')
           const memo = i.memo ? String(i.memo).slice(0, 144) : null
-          const { data, error } = await supabase.from('week_log_plan').insert({ account: i.account, week_start: weekStart, project_id: p.id, day: d, start_min: s, end_min: e, status: 'suggested', memo }).select('id').single()
+          const { data, error } = await supabase.from('week_log_plan').insert({ account: i.account, week_start: ws || weekStart, project_id: p.id, day: d, start_min: s, end_min: e, status: 'suggested', memo }).select('id').single()
           if (error) return fail(error.message)
-          return ok('added plan slot id:' + data.id)
+          return ok('added plan slot id:' + data.id + ' (week of ' + (ws || weekStart) + ')')
         }
         case 'plan_move': {
           const d = dayIdx(i.day); if (d < 0) return fail('bad day ' + i.day)
@@ -197,8 +262,12 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
           if (!(e > s) || isNaN(s) || isNaN(e)) return fail('bad time range')
           const patch = { day: d, start_min: s, end_min: e }
           if (i.memo != null) patch.memo = String(i.memo).slice(0, 144)
+          if (i.week_start) {
+            const ws = validWeek(i.week_start); if (!ws) return fail('week_start must be a Monday between ' + weekStart + ' and 4 weeks out')
+            patch.week_start = ws
+          }
           const { error } = await supabase.from('week_log_plan').update(patch).eq('id', i.plan_id)
-          return error ? fail(error.message) : ok('moved')
+          return error ? fail(error.message) : ok('moved' + (i.week_start ? ' to week of ' + i.week_start : ''))
         }
         case 'plan_delete': {
           const { error } = await supabase.from('week_log_plan').delete().in('id', i.plan_ids || [])
@@ -325,10 +394,26 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
 
   return (
     <>
-      <div className="pagehead">
-        <h1>Assistant</h1>
-        <span className="sub">knows your projects, hours, plan &amp; money · every change needs your approval</span>
+      <div className="pagehead" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h1 style={{ marginRight: 'auto' }}>Assistant</h1>
+        <button className="ghost" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={newChat}>+ New chat</button>
+        <button className="ghost" style={{ fontSize: 12.5, padding: '6px 12px' }} onClick={() => setHistOpen(!histOpen)}>🕘 History</button>
       </div>
+      <div className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 12 }}>knows your projects, hours, plan &amp; money · every change needs your approval · chats are saved</div>
+
+      {histOpen && (
+        <div className="card" style={{ marginBottom: 12, maxHeight: 260, overflowY: 'auto' }}>
+          <div className="paneltitle">Past conversations</div>
+          {chats.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No saved chats yet.</div>}
+          {chats.map((c) => (
+            <div key={c.id} className={'agrow' + (c.id === chatId ? ' donerow' : '')} style={{ cursor: 'pointer' }} onClick={() => openChat(c.id)}>
+              <span className="agname" style={{ textDecoration: 'none' }}>{c.title}</span>
+              <span className="agtime mono">{new Date(c.updated_at).toLocaleDateString()} {new Date(c.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              <button className="ghost agbtn" onClick={(e) => deleteChat(c.id, e)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!hasKey && (
         <div className="card bar">

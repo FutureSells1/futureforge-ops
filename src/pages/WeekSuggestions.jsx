@@ -397,8 +397,8 @@ ${JSON.stringify(items)}`
 
       <div className="card bar">
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off - 1)} disabled={off <= -8}>◀</button>
-        <span className="mono" style={{ fontSize: 13 }}>week of {weekStart}</span>
-        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off + 1)} disabled={off >= 0}>▶</button>
+        <span className="mono" style={{ fontSize: 13 }}>week of {weekStart}{off === 1 ? ' · next week' : off === 2 ? ' · in 2 weeks' : off === 0 ? '' : ''}</span>
+        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off + 1)} disabled={off >= 2}>▶</button>
         <span style={{ marginLeft: 'auto' }} />
         {acctPlan.length > 0 && (
           <button className="ghost" onClick={clearAll} disabled={busy || !loaded}>Clear all</button>
