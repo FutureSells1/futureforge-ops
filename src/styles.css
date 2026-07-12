@@ -392,3 +392,20 @@ html{-webkit-text-size-adjust:100%;}
 .pmtag{display:inline-block;margin-left:7px;font-size:9px;font-weight:700;letter-spacing:.05em;
   color:var(--warnc);background:rgba(232,179,57,.13);border:1px solid rgba(232,179,57,.35);
   border-radius:5px;padding:1px 5px;vertical-align:middle;}
+
+/* team ops: stacked time-mix bars + trend stacks */
+.hbar-track.mix{display:flex;overflow:hidden;}
+.seg{display:block;height:100%;}
+.seg-b{background:var(--ok);}
+.seg-p{background:var(--warnc);}
+.seg-o{background:rgba(255,255,255,.28);}
+.seg-u{background:var(--danger);}
+.seg-dot{display:inline-block;width:8px;height:8px;border-radius:3px;margin:0 4px 0 10px;vertical-align:middle;}
+.seg-dot:first-child{margin-left:0;}
+.trend-stack{width:70%;display:flex;flex-direction:column-reverse;border-radius:4px;overflow:hidden;opacity:.85;transition:opacity .12s;cursor:pointer;}
+.trend-stack:hover{opacity:1;}
+.trend-stack.sel{outline:2px solid var(--ink);outline-offset:1px;opacity:1;}
+.hbar-fill.oh{background:var(--danger);}
+.hbar-fill.acct-tc{background:var(--tc, #6E76F2);}
+.hbar-fill.acct-bc{background:#27B8CF;}
+.hbar-fill.acct-nn{background:#3BC98E;}

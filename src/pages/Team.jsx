@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { supabase, configured } from '../lib/supabase.js'
-import { hrs, DOW } from '../lib/format.js'
+import { hrs, money, DOW } from '../lib/format.js'
 
 const WEEKS_SHOWN = 8
 const DAILY_MIN = 8
@@ -23,6 +23,7 @@ function fmtWeek(ws) {
 export default function Team() {
   const [devs, setDevs] = useState(null)
   const [entries, setEntries] = useState(null)
+  const [projects, setProjects] = useState(null)
   const [err, setErr] = useState('')
 
   const mondays = useMemo(() => {
@@ -37,8 +38,10 @@ export default function Team() {
 
   useEffect(() => {
     if (!configured) return
-    supabase.from('devs').select('id, name, active').order('name')
+    supabase.from('devs').select('id, name, active, hourly_cost').order('name')
       .then(({ data, error }) => { if (error) setErr(error.message); else setDevs((data || []).filter((d) => d.active !== false)) })
+    supabase.from('projects').select('id, channel, display_name, account')
+      .then(({ data, error }) => { if (error) setErr(error.message); else setProjects(data || []) })
     // paginate: Supabase caps each query at 1000 rows — one query
     // truncated silently and dropped whole devs from the grid
     ;(async () => {
@@ -46,7 +49,7 @@ export default function Team() {
       let all = [], from = 0
       for (;;) {
         const { data, error } = await supabase.from('hours_entries')
-          .select('dev_id, work_date, hours, raw_key, is_overhead')
+          .select('dev_id, work_date, hours, raw_key, is_overhead, is_pm, project_id')
           .gte('work_date', mondays[0]).lte('work_date', addDays(mondays[mondays.length - 1], 6))
           .order('id')
           .range(from, from + PAGE - 1)
@@ -61,18 +64,29 @@ export default function Team() {
 
   if (!configured) return <div className="notice">Connect Supabase first — see the README.</div>
   if (err) return <div className="notice warn">{err}</div>
-  if (!devs || !entries) return <div className="muted">Loading…</div>
+  if (!devs || !entries || !projects) return <div className="muted">Loading…</div>
 
   const isUnassigned = (e) => e.is_overhead && String(e.raw_key).startsWith('unassigned')
 
-  // ---- weekly team unassigned trend (all 8 weeks) ----
-  const trendByWeek = Object.fromEntries(mondays.map((m) => [m, 0]))
+  // ---- ops layer: category + cost per entry ----
+  const devCost = Object.fromEntries(devs.map((d) => [d.id, Number(d.hourly_cost) || 0]))
+  const projMap = new Map(projects.map((p) => [String(p.id), p]))
+  // billable = project work · pm = project management (internal) ·
+  // unassigned = idle cost · other = prospect / on-leave / unmatched
+  const catOf = (e) => isUnassigned(e) ? 'u' : e.is_overhead ? 'o' : e.is_pm ? 'p' : e.project_id != null ? 'b' : 'o'
+  const costOf = (e) => Number(e.hours) * (devCost[e.dev_id] || 0)
+
+  // ---- weekly team mix trend (all 8 weeks) ----
+  const trendMix = Object.fromEntries(mondays.map((m) => [m, { b: 0, p: 0, o: 0, u: 0, cost: 0, ohCost: 0 }]))
   entries.forEach((e) => {
-    if (!isUnassigned(e)) return
     const ws = iso(mondayOf(new Date(e.work_date + 'T00:00:00Z')))
-    if (ws in trendByWeek) trendByWeek[ws] += Number(e.hours)
+    const t = trendMix[ws]; if (!t) return
+    const c = catOf(e)
+    t[c] += Number(e.hours)
+    t.cost += costOf(e)
+    if (c === 'u' || c === 'o') t.ohCost += costOf(e)
   })
-  const trendMax = Math.max(1, ...Object.values(trendByWeek))
+  const trendMax = Math.max(1, ...Object.values(trendMix).map((t) => t.b + t.p + t.o + t.u))
 
   // ---- selected week slices ----
   const weekDays = [...Array(7)].map((_, i) => addDays(selWeek, i))
@@ -80,10 +94,17 @@ export default function Team() {
   const inWeek = entries.filter((e) => e.work_date >= selWeek && e.work_date <= weekEnd)
 
   const perDev = {}
-  devs.forEach((d) => { perDev[d.id] = { name: d.name, unassigned: 0, overheadOther: {}, daily: {}, dailyUn: {} } })
+  devs.forEach((d) => { perDev[d.id] = { name: d.name, unassigned: 0, overheadOther: {}, daily: {}, dailyUn: {}, cat: { b: 0, p: 0, o: 0, u: 0 }, cost: 0, ohCost: 0, uCost: 0 } })
+  const acctCost = { tc: 0, bc: 0, nn: 0, overhead: 0 }
+  const projAgg = {}
   inWeek.forEach((e) => {
     const p = perDev[e.dev_id]; if (!p) return
+    const c = catOf(e), $ = costOf(e)
     p.daily[e.work_date] = (p.daily[e.work_date] || 0) + Number(e.hours)
+    p.cat[c] += Number(e.hours)
+    p.cost += $
+    if (c === 'u' || c === 'o') p.ohCost += $
+    if (c === 'u') p.uCost += $
     if (isUnassigned(e)) {
       p.unassigned += Number(e.hours)
       p.dailyUn[e.work_date] = (p.dailyUn[e.work_date] || 0) + Number(e.hours)
@@ -92,7 +113,20 @@ export default function Team() {
       const k = String(e.raw_key)
       p.overheadOther[k] = (p.overheadOther[k] || 0) + Number(e.hours)
     }
+    // where the money went
+    if (e.project_id != null && !e.is_overhead) {
+      const pr = projMap.get(String(e.project_id))
+      if (pr) {
+        acctCost[pr.account] = (acctCost[pr.account] || 0) + $
+        const k = String(e.project_id)
+        projAgg[k] = projAgg[k] || { name: pr.display_name || pr.channel, hours: 0, cost: 0 }
+        projAgg[k].hours += Number(e.hours); projAgg[k].cost += $
+      } else acctCost.overhead += $
+    } else acctCost.overhead += $
   })
+  const topProjects = Object.values(projAgg).sort((a, b) => b.hours - a.hours).slice(0, 6)
+  const projBarMax = Math.max(1, ...topProjects.map((r) => r.hours))
+  const acctMax = Math.max(1, ...Object.values(acctCost))
 
   // ---- 8h/day compliance: weekdays in the past (not today, not future) ----
   function dayStatus(p, dateStr, idx) {
@@ -112,8 +146,16 @@ export default function Team() {
 
   const totalUnassigned = rows.reduce((a, r) => a + r.unassigned, 0)
   const totalFlags = rows.reduce((a, r) => a + r.flags, 0)
-  const topDev = [...rows].sort((a, b) => b.unassigned - a.unassigned)[0]
-  const barMax = Math.max(1, ...rows.map((r) => r.unassigned))
+  const barMax = Math.max(1, ...rows.map((r) => (r.cat.b + r.cat.p + r.cat.o + r.cat.u)))
+
+  // week-level ops numbers
+  const wk = rows.reduce((a, r) => ({
+    b: a.b + r.cat.b, p: a.p + r.cat.p, o: a.o + r.cat.o, u: a.u + r.cat.u,
+    cost: a.cost + r.cost, ohCost: a.ohCost + r.ohCost,
+  }), { b: 0, p: 0, o: 0, u: 0, cost: 0, ohCost: 0 })
+  const wkTotal = wk.b + wk.p + wk.o + wk.u
+  const util = wkTotal > 0 ? wk.b / wkTotal * 100 : 0
+  const unassignedCost = rows.reduce((a, r) => a + r.uCost, 0)
 
   return (
     <>
@@ -133,39 +175,97 @@ export default function Team() {
       </div>
 
       <div className="statrow" style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 16 }}>
-        <Card label="Unassigned this week" value={hrs(totalUnassigned)} />
-        <Card label="Most unassigned" value={topDev && topDev.unassigned > 0 ? topDev.name + ' · ' + hrs(topDev.unassigned) : '—'} small />
-        <Card label="Under-8h flags" value={totalFlags} tone={totalFlags > 0 ? 'neg' : 'pos'} />
+        <Card label="Utilization" value={util.toFixed(0) + '%'} tone={util >= 75 ? 'pos' : util >= 55 ? '' : 'neg'} sub={hrs(wk.b) + ' billable of ' + hrs(wkTotal)} />
+        <Card label="Team cost this week" value={money(wk.cost)} sub={money(wk.cost - wk.ohCost) + ' on projects'} />
+        <Card label="Unassigned cost" value={money(unassignedCost)} tone={unassignedCost > 0 ? 'neg' : 'pos'} sub={hrs(totalUnassigned) + ' idle'} />
+        <Card label="Overhead cost" value={money(wk.ohCost)} sub={hrs(wk.o + wk.u) + ' non-project'} />
+        <Card label="PM hours" value={hrs(wk.p)} sub="internal, not billed" />
+        <Card label="Under-8h flags" value={totalFlags} tone={totalFlags > 0 ? 'neg' : 'pos'} sub={totalFlags > 0 ? 'needs follow-up' : 'all compliant'} />
       </div>
 
       <div className="teamgrid2">
-        {/* unassigned by dev */}
+        {/* utilization by dev — stacked time mix */}
         <div className="card">
-          <div className="paneltitle">Unassigned hours by dev — {fmtWeek(selWeek)}</div>
-          {rows.every((r) => r.unassigned === 0) && <div className="muted" style={{ fontSize: 12.5 }}>No unassigned hours this week.</div>}
-          {rows.filter((r) => r.unassigned > 0).sort((a, b) => b.unassigned - a.unassigned).map((r) => (
-            <div className="hbar" key={r.name}>
-              <span className="hbar-name">{r.name}</span>
-              <span className="hbar-track"><span className="hbar-fill" style={{ width: (r.unassigned / barMax * 100) + '%' }} /></span>
-              <span className="hbar-val mono">{hrs(r.unassigned)}</span>
-            </div>
-          ))}
+          <div className="paneltitle">Time mix by dev — {fmtWeek(selWeek)}</div>
+          {[...rows].filter((r) => r.cat.b + r.cat.p + r.cat.o + r.cat.u > 0)
+            .sort((a, b) => (a.cat.b / Math.max(0.1, a.cat.b + a.cat.p + a.cat.o + a.cat.u)) - (b.cat.b / Math.max(0.1, b.cat.b + b.cat.p + b.cat.o + b.cat.u)))
+            .map((r) => {
+              const tot = r.cat.b + r.cat.p + r.cat.o + r.cat.u
+              const u = tot > 0 ? r.cat.b / tot * 100 : 0
+              return (
+                <div className="hbar" key={r.name} title={r.name + ' — billable ' + hrs(r.cat.b) + ' · PM ' + hrs(r.cat.p) + ' · other ' + hrs(r.cat.o) + ' · unassigned ' + hrs(r.cat.u) + ' · cost ' + money(r.cost)}>
+                  <span className="hbar-name">{r.name}</span>
+                  <span className="hbar-track mix" style={{ width: (tot / barMax * 100) + '%', minWidth: 40 }}>
+                    {r.cat.b > 0 && <span className="seg seg-b" style={{ width: (r.cat.b / tot * 100) + '%' }} />}
+                    {r.cat.p > 0 && <span className="seg seg-p" style={{ width: (r.cat.p / tot * 100) + '%' }} />}
+                    {r.cat.o > 0 && <span className="seg seg-o" style={{ width: (r.cat.o / tot * 100) + '%' }} />}
+                    {r.cat.u > 0 && <span className="seg seg-u" style={{ width: (r.cat.u / tot * 100) + '%' }} />}
+                  </span>
+                  <span className="hbar-val mono">{u.toFixed(0)}%</span>
+                </div>
+              )
+            })}
+          <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+            <span className="seg-dot seg-b" /> billable <span className="seg-dot seg-p" /> PM <span className="seg-dot seg-o" /> other overhead <span className="seg-dot seg-u" /> unassigned
+            — % = billable share (utilization) · sorted worst-first · hover for the breakdown &amp; cost
+          </div>
         </div>
 
-        {/* 8-week trend */}
+        {/* 8-week hours mix trend */}
         <div className="card">
-          <div className="paneltitle">Team unassigned — last {WEEKS_SHOWN} weeks</div>
+          <div className="paneltitle">Team hours mix — last {WEEKS_SHOWN} weeks</div>
           <div className="trend">
-            {mondays.map((m) => (
-              <div className="trend-col" key={m} onClick={() => setSelWeek(m)} title={fmtWeek(m) + ': ' + hrs(trendByWeek[m])}>
-                <div className="trend-val mono">{trendByWeek[m] > 0 ? Math.round(trendByWeek[m]) : ''}</div>
-                <div className={'trend-bar' + (m === selWeek ? ' sel' : '')}
-                  style={{ height: Math.max(3, trendByWeek[m] / trendMax * 90) + 'px' }} />
-                <div className="trend-lbl">{m.slice(5).replace('-', '/')}</div>
-              </div>
-            ))}
+            {mondays.map((m) => {
+              const t = trendMix[m]
+              const tot = t.b + t.p + t.o + t.u
+              const px = (v) => Math.max(v > 0 ? 2 : 0, v / trendMax * 90)
+              const u = tot > 0 ? Math.round(t.b / tot * 100) : 0
+              return (
+                <div className="trend-col" key={m} onClick={() => setSelWeek(m)}
+                  title={fmtWeek(m) + ' — ' + hrs(tot) + ' total · ' + u + '% utilization · cost ' + money(t.cost) + ' (overhead ' + money(t.ohCost) + ')'}>
+                  <div className="trend-val mono">{tot > 0 ? u + '%' : ''}</div>
+                  <div className={'trend-stack' + (m === selWeek ? ' sel' : '')}>
+                    <div className="seg-u" style={{ height: px(t.u) }} />
+                    <div className="seg-o" style={{ height: px(t.o) }} />
+                    <div className="seg-p" style={{ height: px(t.p) }} />
+                    <div className="seg-b" style={{ height: px(t.b) }} />
+                  </div>
+                  <div className="trend-lbl">{m.slice(5).replace('-', '/')}</div>
+                </div>
+              )
+            })}
           </div>
-          <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>click a bar to jump to that week</div>
+          <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>% = utilization that week · click a bar to jump · hover for cost</div>
+        </div>
+      </div>
+
+      <div className="teamgrid2" style={{ marginTop: 16 }}>
+        {/* cost by account */}
+        <div className="card">
+          <div className="paneltitle">Cost by account — {fmtWeek(selWeek)}</div>
+          {[['tc', 'Thiago'], ['bc', 'Bernardo'], ['nn', 'Nick'], ['overhead', 'Overhead']].map(([k, label]) => (
+            <div className="hbar" key={k}>
+              <span className="hbar-name">{label}</span>
+              <span className="hbar-track">
+                <span className={'hbar-fill' + (k === 'overhead' ? ' oh' : ' acct-' + k)} style={{ width: (acctCost[k] / acctMax * 100) + '%' }} />
+              </span>
+              <span className="hbar-val mono">{money(acctCost[k] || 0)}</span>
+            </div>
+          ))}
+          <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>dev cost of hours worked, grouped by the project's Upwork account · overhead = unassigned, prospect, on-leave, unmatched</div>
+        </div>
+
+        {/* top projects by hours */}
+        <div className="card">
+          <div className="paneltitle">Top projects this week</div>
+          {topProjects.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>No project hours this week yet.</div>}
+          {topProjects.map((r) => (
+            <div className="hbar" key={r.name}>
+              <span className="hbar-name" title={r.name}>{r.name}</span>
+              <span className="hbar-track"><span className="hbar-fill" style={{ width: (r.hours / projBarMax * 100) + '%' }} /></span>
+              <span className="hbar-val mono">{hrs(r.hours)} · {money(r.cost)}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -234,11 +334,12 @@ export default function Team() {
   )
 }
 
-function Card({ label, value, tone, small }) {
+function Card({ label, value, tone, small, sub }) {
   return (
-    <div className="card" style={{ minWidth: 170, flex: 1 }}>
+    <div className="card" style={{ minWidth: 150, flex: 1 }}>
       <div className="muted" style={{ fontSize: 11.5, letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</div>
       <div className={'mono ' + (tone || '')} style={{ fontSize: small ? 16 : 22, fontWeight: 500, marginTop: 4 }}>{value}</div>
+      {sub && <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>{sub}</div>}
     </div>
   )
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useParams, useOutletContext } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
 import { ACCOUNTS, COLORS, money, money2, hrs, net, dayName } from '../lib/format.js'
+import { postToSlack } from '../lib/slack.js'
 
 function weekStart(dateStr) {
   const d = new Date(dateStr + 'T00:00:00Z')
@@ -274,7 +275,7 @@ export default function ProjectDetail() {
       )}
 
       {tab === 'estimation' && (
-        <EstimationTab projectId={id} loggedHours={Number(proj.total_hours)} userEmail={session?.user?.email || ''} />
+        <EstimationTab projectId={id} loggedHours={Number(proj.total_hours)} userEmail={session?.user?.email || ''} channel={proj.channel} displayName={proj.display_name} />
       )}
     </>
   )
@@ -391,10 +392,12 @@ function BillingPanel({ proj, milestones, onChanged }) {
   )
 }
 
-function EstimationTab({ projectId, loggedHours, userEmail }) {
+function EstimationTab({ projectId, loggedHours, userEmail, channel, displayName }) {
   const [est, setEst] = useState(null)
   const [notes, setNotes] = useState('')
   const [saved, setSaved] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendMsg, setSendMsg] = useState(null)
 
   useEffect(() => {
     supabase.from('project_estimates').select('*').eq('project_id', projectId).maybeSingle()
@@ -416,6 +419,29 @@ function EstimationTab({ projectId, loggedHours, userEmail }) {
       setEst((e) => ({ ...e, ...row }))
       setSaved('saved ' + new Date().toLocaleTimeString())
     }
+  }
+
+  async function sendToSlack() {
+    setSending(true); setSendMsg(null)
+    await save({ notes })
+    const initial = Number(est.initial_hours)
+    const remaining = Number(est.remaining_hours)
+    const projected = loggedHours + remaining
+    const delta = projected - initial
+    const lines = [
+      '*\u{1F4D0} Estimation update \u2014 ' + (displayName || channel) + '*',
+      '',
+      '\u2022 Initial estimate: *' + initial.toFixed(1) + 'h*',
+      '\u2022 Logged so far: *' + loggedHours.toFixed(1) + 'h*',
+      '\u2022 Estimated remaining: *' + remaining.toFixed(1) + 'h*',
+      '\u2022 Projected total: *' + projected.toFixed(1) + 'h*  (' + (delta > 0 ? '+' : '') + delta.toFixed(1) + 'h vs initial)',
+    ]
+    if ((notes || '').trim()) { lines.push('', '*Notes:*', notes.trim()) }
+    if (userEmail) { lines.push('', '_updated by ' + userEmail + '_') }
+    const r = await postToSlack({ channel, text: lines.join('\n') })
+    setSending(false)
+    setSendMsg(r.ok ? { ok: true, text: 'Sent to #' + channel } : { ok: false, text: r.error || 'failed' })
+    if (r.ok) setTimeout(() => setSendMsg(null), 4000)
   }
 
   if (!est) return <div className="muted">Loading…</div>
@@ -446,6 +472,19 @@ function EstimationTab({ projectId, loggedHours, userEmail }) {
           Everyone (admins and devs) can edit this tab. Update "estimated remaining" as work evolves — projected total shows whether the project lands inside the initial estimate.
           {est.updated_at && <> · last update {new Date(est.updated_at).toLocaleString()} {est.updated_by && 'by ' + est.updated_by}</>}
           {saved && <> · {saved}</>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <button className="primary" onClick={sendToSlack} disabled={sending}>
+            {sending ? 'Sending…' : '💬 Send to #' + channel}
+          </button>
+          {sendMsg && (
+            <span style={{ fontSize: 12.5, color: sendMsg.ok ? 'var(--ok)' : 'var(--danger)' }}>
+              {sendMsg.ok ? '✓ ' : '⚠ '}{sendMsg.text}
+            </span>
+          )}
+        </div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          Posts the figures above + your notes to the project's Slack channel.
         </div>
       </div>
     </>
