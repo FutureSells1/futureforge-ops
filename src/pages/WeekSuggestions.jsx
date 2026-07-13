@@ -68,20 +68,12 @@ export default function WeekSuggestions() {
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
-  const [selected, setSelected] = useState(null)
-  const [pop, setPop] = useState(null)
   const [selDay, setSelDay] = useState(() => (new Date().getDay() + 6) % 7)
   const [copied, setCopied] = useState(null)
   function copyMemo(id, text) {
     navigator.clipboard?.writeText(text)
     setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1400)
   }
-
-  useEffect(() => {
-    const h = () => { setSelected(null); setPop(null) }
-    document.addEventListener('click', h)
-    return () => document.removeEventListener('click', h)
-  }, [])
 
   useEffect(() => {
     if (!labs) { setLoaded(true); return }
@@ -335,7 +327,6 @@ ${JSON.stringify(items)}`
   }
   async function removeRow(row) {
     setPlan((prev) => prev.filter((r) => r.id !== row.id))
-    setSelected(null); setPop(null)
     await supabase.from('week_log_plan').delete().eq('id', row.id)
   }
   async function clearAll() {
@@ -344,26 +335,15 @@ ${JSON.stringify(items)}`
     const { error } = await supabase.from('week_log_plan').delete().eq('account', acct).eq('week_start', weekStart)
     if (error) { setMsg('Clear failed: ' + error.message); setBusy(false); return }
     setPlan((prev) => prev.filter((r) => r.account !== acct))
-    setSelected(null); setPop(null)
     setMsg('Cleared.')
     setBusy(false)
   }
 
-  function selectRow(r, ev) {
-    ev.stopPropagation()
-    setSelected(r.id)
-    let x = ev.clientX + 10, y = ev.clientY + 10
-    if (x + 280 > window.innerWidth) x = window.innerWidth - 290
-    if (y + 120 > window.innerHeight) y = ev.clientY - 120
-    setPop({ x, y })
-  }
 
   // display range: zoom the grid to the hours that actually have content (+1h pad)
-  const [dispS, dispE] = [0, 1440]   // always show the full day, 00:00–24:00
 
   const codeOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.project_code || p.channel) : '?' }
   const nameOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.display_name || p.channel) : '?' }
-  const selRow = plan.find((r) => r.id === selected)
 
   // summary rows: every account project with activity
   const summary = accProjects.map((p) => {
@@ -396,6 +376,13 @@ ${JSON.stringify(items)}`
       </div>
 
       <div className="card bar">
+        <div className="tabs d-only" style={{ marginRight: 6 }}>
+          {Object.entries(NAMES).map(([k, n]) => (
+            <button key={k} className={'tab' + (k === acct ? ' active' : '')}
+              style={k === acct ? { background: COLORS[k] } : null}
+              onClick={() => { setAcct(k); setMsg('') }}>{n}</button>
+          ))}
+        </div>
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off - 1)} disabled={off <= -8}>◀</button>
         <span className="mono" style={{ fontSize: 13 }}>week of {weekStart}{off === 1 ? ' · next week' : off === 2 ? ' · in 2 weeks' : off === 0 ? '' : ''}</span>
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off + 1)} disabled={off >= 2}>▶</button>
@@ -412,6 +399,22 @@ ${JSON.stringify(items)}`
       </div>
 
       {msg && <div className="statusline"><span>{msg}</span></div>}
+
+      {loaded && (() => {
+        const planMin = acctPlan.reduce((a, r) => a + (r.end_min - r.start_min), 0)
+        const doneMin = acctPlan.filter((r) => r.status === 'done').reduce((a, r) => a + (r.end_min - r.start_min), 0)
+        const mirMin = acctMirror.reduce((a, b) => a + (b.end_min - b.start_min), 0)
+        const capLoad = (mirMin + planMin) / 60
+        return (
+          <div className="wtotals d-only">
+            <span><strong>{((planMin - doneMin) / 60).toFixed(1)}h</strong> left to log</span>
+            <span className="sep">·</span>
+            <span><strong>{(doneMin / 60).toFixed(1)}h</strong> done</span>
+            <span className="sep">·</span>
+            <span>account load <strong className={capLoad > 40 ? 'neg' : capLoad > 36 ? '' : 'pos'}>{capLoad.toFixed(1)} / 40h</strong> (Upwork cap)</span>
+          </div>
+        )
+      })()}
 
       {/* ---------- mobile: account tabs + day agenda ---------- */}
       <div className="m-only">
@@ -490,135 +493,80 @@ ${JSON.stringify(items)}`
         )}
       </div>
 
-      <div className="cols d-only">
-        <div className="card">
-          <div className="tabs">
-            {Object.entries(NAMES).map(([k, n]) => (
-              <button key={k} className={'tab' + (k === acct ? ' active' : '')}
-                style={k === acct ? { background: COLORS[k] } : null}
-                onClick={(e) => { e.stopPropagation(); setAcct(k); setMsg('') }}>{n}</button>
-            ))}
-          </div>
-
-          <div className="grid">
-            <div className="axis">
-              {Array.from({ length: (dispE - dispS) / 60 }, (_, i) => dispS / 60 + i).map((h) => (
-                <div key={h} className="hourband mono" style={{ height: CELL * 2 }}>{pad(h)}–{pad((h + 1) % 24)}</div>
-              ))}
-            </div>
-            {DAYS.map((dname, d) => (
-              <div className="daycol" key={d}>
-                <div className="dayhead">{dname}</div>
-                <div className="daybody" style={{ height: (dispE - dispS) / 30 * CELL }}>
-                  {Array.from({ length: (dispE - dispS) / 60 - 1 }, (_, i) => i + 1).map((h) => (
-                    <div key={h} className="hline" style={{ top: h * CELL * 2 }} />
-                  ))}
-                  {acctMirror.filter((b) => b.day === d).map((b) => (
-                    <div key={b.id} className="blk"
-                      title={'on Upwork · ' + mlab(b.start_min) + '–' + mlab(b.end_min) + (b.confirmed_project_id ? ' · ' + nameOf(b.confirmed_project_id) : '')}
-                      style={{
-                        top: (b.start_min - dispS) / 30 * CELL,
-                        height: Math.max(5, (b.end_min - b.start_min) / 30 * CELL),
-                        background: COLORS[acct], opacity: .45, cursor: 'default',
-                      }} />
-                  ))}
-                  {acctPlan.filter((r) => r.day === d).map((r) => {
-                    const h = Math.max(10, (r.end_min - r.start_min) / 30 * CELL)
-                    const col = COLORS[acct]
-                    const done = r.status === 'done'
-                    return (
-                      <div key={r.id}
-                        className={'blk plan' + (selected === r.id ? ' sel' : '') + (done ? ' done' : '')}
-                        title={(done ? '✓ logged · ' : 'log: ') + nameOf(r.project_id) + ' · ' + mlab(r.start_min) + '–' + mlab(r.end_min)}
-                        style={{
-                          top: (r.start_min - dispS) / 30 * CELL, height: h,
-                          background: done
-                            ? `color-mix(in srgb, ${col} 78%, transparent)`
-                            : `color-mix(in srgb, ${col} 24%, transparent)`,
-                          border: `1px solid color-mix(in srgb, ${col} 75%, transparent)`,
-                        }}
-                        onClick={(e) => selectRow(r, e)}>
-                        {h >= 13 && <span className="plantag">{done ? '✓ ' : ''}{codeOf(r.project_id)}</span>}
-                      </div>
-                    )
-                  })}
+      {/* ================= desktop: week board ================= */}
+      <div className="d-only">
+        {/* per-project progress chips */}
+        {loaded && (
+          <div className="wchips">
+            {summary.filter((r) => r.p.billing_type === 'hourly').map((r) => {
+              const done = acctPlan.filter((x) => String(x.project_id) === r.pid && x.status === 'done')
+                .reduce((a, x) => a + (x.end_min - x.start_min), 0)
+              const pct = r.planned > 0 ? Math.min(100, done / r.planned * 100) : 0
+              const rate = Number(r.p.billing_rate) || 0
+              return (
+                <div className="wchip" key={r.pid} title={'worked ' + hrs(r.worked / 60) + ' · on Upwork ' + hrs(r.logged / 60) + ' · planned ' + hrs(r.planned / 60)}>
+                  <div className="wchip-top">
+                    <span className="wchip-name">{r.p.display_name || r.p.channel}</span>
+                    <span className={'wchip-h' + (r.toLog >= MIN_CHUNK ? '' : ' ok')}>{r.toLog >= MIN_CHUNK ? hrs(r.toLog / 60) + ' to log' : 'all logged ✓'}</span>
+                  </div>
+                  <div className="wchip-bar"><span style={{ width: pct + '%' }} /></div>
+                  {rate > 0 && r.toLog >= MIN_CHUNK && (
+                    <div className="wchip-sub">≈{money(r.toLog / 60 * rate)} gross · {money(net(r.toLog / 60 * rate))} net</div>
+                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-          <div className="legend">
-            faded solid = already on Upwork (mirror) · glass = suggested slot, click to mark logged / remove · filled + ✓ = done
-          </div>
-        </div>
-
-        <div>
-          <div className="card">
-            <div className="paneltitle">
-              <span className="swatch" style={{ background: COLORS[acct] }} />This week — {NAMES[acct]}
-            </div>
-            {!loaded ? <div className="muted" style={{ fontSize: 12.5 }}>Loading…</div> :
-              summary.length === 0 ? <div className="muted" style={{ fontSize: 12.5 }}>No dev hours for this account this week yet.</div> : (
-              <div className="scrollx">
-                <table className="data">
-                  <thead><tr><th>Project</th><th className="num">Worked</th><th className="num">On Upwork</th><th className="num">Planned</th><th className="num">To log</th></tr></thead>
-                  <tbody>
-                    {summary.map((r) => (
-                      <tr key={r.pid}>
-                        <td>
-                          {r.p.display_name || r.p.channel}
-                          <div className="muted" style={{ fontSize: 10.5 }}>
-                            {r.p.billing_type === 'fixed'
-                              ? 'fixed · milestones ' + ((msStats[r.pid] || {}).rel || 0) + '/' + ((msStats[r.pid] || {}).tot || 0)
-                              : (Number(r.p.billing_rate)
-                                ? '≈' + money(r.toLog / 60 * Number(r.p.billing_rate)) + ' gross · ' + money(net(r.toLog / 60 * Number(r.p.billing_rate))) + ' net'
-                                : 'hourly · no rate set')}
-                          </div>
-                          {(taskStats.week[r.pid] || []).length > 0 && (
-                            <div className="muted tasksline">{taskStats.week[r.pid].join(' \u00b7 ')}</div>
-                          )}
-                        </td>
-                        <td className="num">{hrs(r.worked / 60)}</td>
-                        <td className="num">{hrs(r.logged / 60)}</td>
-                        <td className="num">{hrs(r.planned / 60)}</td>
-                        <td className="num" style={{ color: r.toLog >= MIN_CHUNK ? 'var(--warnc)' : 'var(--ok)' }}>{hrs(r.toLog / 60)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              )
+            })}
+            {summary.some((r) => r.p.billing_type === 'fixed') && (
+              <div className="wchip fixednote">
+                + {hrs(summary.filter((r) => r.p.billing_type === 'fixed').reduce((a, r) => a + r.worked, 0) / 60)} on fixed-price projects — nothing to log
               </div>
             )}
-            <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-              Worked = dev timesheets · On Upwork = confirmed mirror blocks · hours are placed on the same day they were worked.
-              Mirror an account before generating so "on Upwork" is accurate — each day's hours stay on that day and only fill that day's free gaps.
-            </div>
           </div>
+        )}
+
+        {/* the board */}
+        <div className="wboard">
+          {DAYS.map((dname, d) => {
+            const dayPlan = acctPlan.filter((r) => r.day === d).sort((a, b) => a.start_min - b.start_min)
+            const mirH = acctMirror.filter((b) => b.day === d).reduce((a, b) => a + (b.end_min - b.start_min), 0) / 60
+            const planH = dayPlan.reduce((a, r) => a + (r.end_min - r.start_min), 0) / 60
+            const today = plusDays(weekStart, d) === isoDate(new Date())
+            return (
+              <div className={'wday' + (today ? ' today' : '')} key={d}>
+                <div className="wday-head">
+                  <span className="wday-name">{dname}</span>
+                  <span className="wday-date mono">{plusDays(weekStart, d).slice(5).replace('-', '/')}</span>
+                  {planH > 0 && <span className="wday-tot mono">{planH.toFixed(1)}h</span>}
+                </div>
+                {mirH > 0 && <div className="wday-mir">on Upwork already: {mirH.toFixed(1)}h</div>}
+                {dayPlan.length === 0 && <div className="wday-empty">—</div>}
+                {dayPlan.map((r) => {
+                  const done = r.status === 'done'
+                  const memo = memoOf(r)
+                  return (
+                    <div className={'wcard' + (done ? ' done' : '')} key={r.id} style={{ borderLeftColor: done ? 'var(--ok)' : COLORS[acct] }}>
+                      <div className="wcard-top">
+                        <span className="wcard-time mono">{mlab(r.start_min)} – {mlab(r.end_min)}</span>
+                        <span className="wcard-actions">
+                          {memo && <button className="wbtn" title="Copy memo" onClick={() => copyMemo(r.id, memo)}>{copied === r.id ? '✓' : '⧉'}</button>}
+                          <button className="wbtn" title={done ? 'Mark not logged' : 'Mark logged'} onClick={() => setDone(r, !done)}>{done ? '↺' : '✓'}</button>
+                          <button className="wbtn" title="Remove" onClick={() => removeRow(r)}>✕</button>
+                        </span>
+                      </div>
+                      <div className="wcard-proj">{done ? '✓ ' : ''}{nameOf(r.project_id)}</div>
+                      {memo && <div className="wcard-memo">{memo}</div>}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>
+          Each card = one Upwork entry: copy the memo (⧉), log that time range on Upwork, mark it ✓. Cards sit on the day the work actually happened.
         </div>
       </div>
 
-      {pop && selRow && (
-        <div className="pop" style={{ left: pop.x, top: pop.y, flexDirection: 'column', alignItems: 'stretch', gap: 7, width: 280 }}
-          onClick={(e) => e.stopPropagation()}>
-          <span className="mono" style={{ fontSize: 11 }}>
-            {DAYS[selRow.day]} {mlab(selRow.start_min)}–{mlab(selRow.end_min)} · {nameOf(selRow.project_id)}
-          </span>
-          {memoOf(selRow) && (
-            <span style={{ fontSize: 11, color: 'var(--mut)' }}>
-              memo ({memoOf(selRow).length}/{MEMO_LIMIT}): {memoOf(selRow)}
-            </span>
-          )}
-          {memoOf(selRow) && (
-            <button onClick={(e) => { e.stopPropagation(); copyMemo(selRow.id, memoOf(selRow)) }}>
-              {copied === selRow.id ? '✓ copied' : '⧉ Copy memo'}
-            </button>
-          )}
-          <div style={{ display: 'flex', gap: 7 }}>
-            <button onClick={(e) => { e.stopPropagation(); setDone(selRow, selRow.status !== 'done') }}>
-              {selRow.status === 'done' ? 'Mark not logged' : '✓ Mark logged'}
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); removeRow(selRow) }}>Delete</button>
-          </div>
-        </div>
-      )}
     </>
   )
 }
