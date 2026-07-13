@@ -70,6 +70,9 @@ export default function WeekSuggestions() {
   const [msg, setMsg] = useState('')
   const [selDay, setSelDay] = useState(() => (new Date().getDay() + 6) % 7)
   const [copied, setCopied] = useState(null)
+  const [view, setView] = useState(() => localStorage.getItem('ws_view') || 'list')
+  const [calSel, setCalSel] = useState(null)   // plan row shown in the calendar detail panel
+  function switchView(v) { setView(v); localStorage.setItem('ws_view', v); setCalSel(null) }
   function copyMemo(id, text) {
     navigator.clipboard?.writeText(text)
     setCopied(id); setTimeout(() => setCopied((c) => (c === id ? null : c)), 1400)
@@ -346,7 +349,7 @@ ${JSON.stringify(items)}`
   const contractLoad = useMemo(() => {
     const m = {}
     acctMirror.forEach((b) => { if (b.confirmed_project_id) { const k = String(b.confirmed_project_id); m[k] = (m[k] || 0) + (b.end_min - b.start_min) / 60 } })
-    acctPlan.forEach((r) => { const k = String(r.project_id); m[k] = (m[k] || 0) + (r.end_min - r.start_min) / 60 })
+    acctPlan.filter((r) => r.status !== 'done').forEach((r) => { const k = String(r.project_id); m[k] = (m[k] || 0) + (r.end_min - r.start_min) / 60 })
     return m
   }, [acctMirror, acctPlan])
 
@@ -392,6 +395,10 @@ ${JSON.stringify(items)}`
               style={k === acct ? { background: COLORS[k] } : null}
               onClick={() => { setAcct(k); setMsg('') }}>{n}</button>
           ))}
+        </div>
+        <div className="vseg d-only">
+          <button className={view === 'list' ? 'on' : ''} onClick={() => switchView('list')}>List</button>
+          <button className={view === 'cal' ? 'on' : ''} onClick={() => switchView('cal')}>Calendar</button>
         </div>
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off - 1)} disabled={off <= -8}>◀</button>
         <span className="mono" style={{ fontSize: 13 }}>week of {weekStart}{off === 1 ? ' · next week' : off === 2 ? ' · in 2 weeks' : off === 0 ? '' : ''}</span>
@@ -528,9 +535,12 @@ ${JSON.stringify(items)}`
                   {(() => {
                     const cap = Number(r.p.weekly_cap_hours) || 0
                     const load = contractLoad[r.pid] || 0
+                    const stale = load > (r.worked / 60) + 0.5 && r.worked > 0
                     if (cap > 0) return (
-                      <div className={'wchip-sub' + (load > cap ? ' neg' : load > cap * 0.9 ? ' warn' : '')}>
-                        {load.toFixed(1)} / {cap}h contract cap{load > cap ? ' ⚠ over — roll overflow to next week' : ''}
+                      <div className={'wchip-sub' + (stale ? ' warn' : load > cap ? ' neg' : load > cap * 0.9 ? ' warn' : '')}>
+                        {stale
+                          ? 'plan overlaps hours already on Upwork — hit Regenerate'
+                          : load.toFixed(1) + ' / ' + cap + 'h contract cap' + (load > cap ? ' ⚠ over — roll overflow to next week' : '')}
                       </div>
                     )
                     return rate > 0 && r.toLog >= MIN_CHUNK
@@ -548,6 +558,7 @@ ${JSON.stringify(items)}`
           </div>
         )}
 
+        {view === 'list' && <>
         {/* the board: one full-width row per day */}
         {DAYS.map((dname, d) => {
           const dayPlan = acctPlan.filter((r) => r.day === d).sort((a, b) => a.start_min - b.start_min)
@@ -605,6 +616,85 @@ ${JSON.stringify(items)}`
         <div className="muted" style={{ fontSize: 11.5, marginTop: 12 }}>
           One card = one Upwork entry: ⧉ copy the memo → log that time on Upwork → ✓ logged. Hours sit on the day the work actually happened.
         </div>
+        </>}
+
+        {view === 'cal' && (() => {
+          // dynamic zoom: only render the hours that have content (+1h pad)
+          let lo = 9 * 60, hi = 19 * 60
+          acctMirror.forEach((b) => { lo = Math.min(lo, b.start_min); hi = Math.max(hi, b.end_min) })
+          acctPlan.forEach((r) => { lo = Math.min(lo, r.start_min); hi = Math.max(hi, r.end_min) })
+          lo = Math.max(0, Math.floor(lo / 60) * 60); hi = Math.min(1440, Math.ceil(hi / 60) * 60)
+          const PX = 44 // pixels per hour — roomy
+          const top = (m) => (m - lo) / 60 * PX
+          const codeOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.project_code || p.channel) : '?' }
+          const sel = acctPlan.find((r) => r.id === calSel)
+          return (
+            <div className="calwrap">
+              <div className="calgrid">
+                <div className="calaxis">
+                  {Array.from({ length: (hi - lo) / 60 }, (_, i) => lo / 60 + i).map((h) => (
+                    <div key={h} className="calhour mono" style={{ height: PX }}>{pad(h)}:00</div>
+                  ))}
+                </div>
+                {DAYS.map((dname, d) => {
+                  const today = plusDays(weekStart, d) === isoDate(new Date())
+                  return (
+                    <div className="calday" key={d}>
+                      <div className={'calday-head' + (today ? ' today' : '')}>
+                        {dname} <span className="mono">{plusDays(weekStart, d).slice(8)}</span>
+                      </div>
+                      <div className="calday-body" style={{ height: (hi - lo) / 60 * PX }}>
+                        {Array.from({ length: (hi - lo) / 60 - 1 }, (_, i) => i + 1).map((h) => (
+                          <div key={h} className="calline" style={{ top: h * PX }} />
+                        ))}
+                        {acctMirror.filter((b) => b.day === d).map((b) => (
+                          <div key={b.id} className="calblk mir" title={'on Upwork · ' + mlab(b.start_min) + '–' + mlab(b.end_min)}
+                            style={{ top: top(b.start_min), height: Math.max(6, (b.end_min - b.start_min) / 60 * PX - 2) }} />
+                        ))}
+                        {acctPlan.filter((r) => r.day === d).map((r) => {
+                          const done = r.status === 'done'
+                          const h = Math.max(16, (r.end_min - r.start_min) / 60 * PX - 2)
+                          return (
+                            <div key={r.id}
+                              className={'calblk' + (done ? ' done' : '') + (calSel === r.id ? ' sel' : '')}
+                              style={{ top: top(r.start_min), height: h, background: done ? 'var(--ok)' : COLORS[acct] }}
+                              title={nameOf(r.project_id) + ' · ' + mlab(r.start_min) + '–' + mlab(r.end_min)}
+                              onClick={() => setCalSel(calSel === r.id ? null : r.id)}>
+                              {h >= 24 && <span className="calblk-lbl">{done ? '✓ ' : ''}{codeOf(r.project_id)} · {((r.end_min - r.start_min) / 60).toFixed(1)}h</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {sel ? (
+                <div className="caldetail">
+                  <div className="lcard" style={{ border: '1px solid var(--line2)' }}>
+                    <div className="lcard-top">
+                      <span className="lcard-dot" style={{ background: sel.status === 'done' ? 'var(--ok)' : COLORS[acct] }} />
+                      <span className="lcard-proj">{nameOf(sel.project_id)}</span>
+                      <span className="lcard-h mono">{((sel.end_min - sel.start_min) / 60).toFixed(1)}h</span>
+                    </div>
+                    <div className="muted mono" style={{ fontSize: 12 }}>{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][sel.day]} · {mlab(sel.start_min)}–{mlab(sel.end_min)}</div>
+                    {memoOf(sel) && <div className="lcard-memo" style={{ WebkitLineClamp: 6 }}>{memoOf(sel)}</div>}
+                    <div className="lcard-foot">
+                      <span className="lcard-actions" style={{ marginLeft: 0 }}>
+                        {memoOf(sel) && <button className="lbtn" onClick={() => copyMemo(sel.id, memoOf(sel))}>{copied === sel.id ? '✓ copied' : '⧉ memo'}</button>}
+                        <button className={'lbtn' + (sel.status === 'done' ? '' : ' go')} onClick={() => setDone(sel, sel.status !== 'done')}>{sel.status === 'done' ? '↺ undo' : '✓ logged'}</button>
+                        <button className="lbtn quiet" onClick={() => { removeRow(sel); setCalSel(null) }}>✕</button>
+                        <button className="lbtn quiet" onClick={() => setCalSel(null)}>close</button>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>Click a block for the memo &amp; actions · faded = already on Upwork · green = logged ✓</div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
     </>

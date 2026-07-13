@@ -124,7 +124,7 @@ export default function Assistant() {
       supabase.from('week_log_plan').select('*').in('week_start', [weekStart, nextWeek]),
       supabase.from('upwork_blocks').select('id, account, day, start_min, end_min, label, suggested_project_id, suggestion_confidence, confirmed_project_id').eq('week_start', weekStart),
       supabase.from('project_week_revenue').select('project_id, week_start, amount').gte('week_start', lastWeek),
-      supabase.from('hours_entries').select('project_id, work_date, hours, is_overhead').gte('work_date', lastWeek).lte('work_date', weekEnd).limit(8000),
+      supabase.from('hours_entries').select('project_id, work_date, hours, is_overhead, is_pm').gte('work_date', lastWeek).lte('work_date', weekEnd).limit(8000),
       supabase.from('devs').select('id, name, hourly_cost, active'),
       supabase.from('project_milestones').select('project_id, amount, released'),
       supabase.from('sync_warnings').select('id', { count: 'exact', head: true }),
@@ -136,11 +136,12 @@ export default function Assistant() {
       byId: new Map(projects.map((p) => [String(p.id), p])),
     }
     const $ = (n) => '$' + Number(n || 0).toFixed(0)
-    const hoursBy = {} // pid -> {this, last}
+    const hoursBy = {} // pid -> {this, last, pmT} — PM tracked separately: it is NEVER logged on Upwork
     ;(he.data || []).forEach((e) => {
       if (e.project_id == null) return
       const k = String(e.project_id)
-      hoursBy[k] = hoursBy[k] || { t: 0, l: 0 }
+      hoursBy[k] = hoursBy[k] || { t: 0, l: 0, pmT: 0 }
+      if (e.is_pm) { if (e.work_date >= weekStart) hoursBy[k].pmT += Number(e.hours); return }
       if (e.work_date >= weekStart) hoursBy[k].t += Number(e.hours); else hoursBy[k].l += Number(e.hours)
     })
     const overheadH = (he.data || []).filter((e) => e.is_overhead && e.work_date >= weekStart).reduce((a, e) => a + Number(e.hours), 0)
@@ -157,7 +158,7 @@ export default function Assistant() {
       const e = estBy[k]
       return `- ${r.channel} | ${r.display_name || ''} | ${r.client_name || ''} | acct:${r.account} | ${r.billing_type}${p.billing_rate ? '@$' + p.billing_rate + '/h ref' : ''}` +
         ` | lifetime: ${Number(r.total_hours || 0).toFixed(0)}h${Number(r.pm_hours) > 0 ? ' (incl ' + Number(r.pm_hours).toFixed(0) + 'h PM)' : ''} cost ${$(r.total_cost)} netRev ${$(r.net_revenue)} margin ${$(r.margin)}` +
-        ` | hrs thisWk ${h.t.toFixed(1)} lastWk ${h.l.toFixed(1)}` +
+        ` | loggable hrs thisWk ${h.t.toFixed(1)} lastWk ${h.l.toFixed(1)}${h.pmT ? ' (+' + h.pmT.toFixed(1) + 'h PM, never logged)' : ''}` +
         ` | billed thisWk ${revBy[k + '|' + weekStart] != null ? $(revBy[k + '|' + weekStart]) : '—'} lastWk ${revBy[k + '|' + lastWeek] != null ? $(revBy[k + '|' + lastWeek]) : '—'}` +
         (r.billing_type === 'fixed' && msBy[k] ? ` | milestones ${msBy[k].rel}/${msBy[k].tot} released (${$(msBy[k].relAmt)} gross)` : '') +
         (e ? ` | est ${e.initial_hours}h init / ${e.remaining_hours}h remaining` : '')
