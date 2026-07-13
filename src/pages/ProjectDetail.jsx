@@ -163,7 +163,7 @@ export default function ProjectDetail() {
                   <tbody>
                     {pmWeeks.map(([ws, v]) => (
                       <tr key={ws}>
-                        <td className="mono">{ws}</td>
+                        <td className="mono">{fmtWeek(ws)}</td>
                         <td className="num">{hrs(v.hours - v.pmHours)}</td>
                         <td className="num">{hrs(v.pmHours)}</td>
                         {isAdmin && <td className="num">{money(v.pmCost)}</td>}
