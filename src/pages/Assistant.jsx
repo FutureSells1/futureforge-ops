@@ -119,7 +119,7 @@ export default function Assistant() {
     const lastWeek = plusDays(weekStart, -7)
     const [prof, pj, est, plan, blocks, rev, he, dv, ms, warn, unm] = await Promise.all([
       supabase.from('project_profitability').select('*'),
-      supabase.from('projects').select('id, channel, display_name, client_name, account, billing_type, billing_rate, status'),
+      supabase.from('projects').select('id, channel, display_name, client_name, account, billing_type, billing_rate, weekly_cap_hours, status'),
       supabase.from('project_estimates').select('*'),
       supabase.from('week_log_plan').select('*').in('week_start', [weekStart, nextWeek]),
       supabase.from('upwork_blocks').select('id, account, day, start_min, end_min, label, suggested_project_id, suggestion_confidence, confirmed_project_id').eq('week_start', weekStart),
@@ -170,11 +170,16 @@ export default function Assistant() {
     const livePlan = (plan.data || []).filter((r) => r.status !== 'dismissed')
     const planLines = livePlan.filter((r) => r.week_start === weekStart).map(planLine).join('\n') || '(empty — generate on the Week Suggestions page or add via plan_add)'
     const planLinesNext = livePlan.filter((r) => r.week_start === nextWeek).map(planLine).join('\n') || '(empty)'
-    // per-account load this week: mirrored + planned, vs the ~40h/account Upwork cap
-    const loadByAcct = { tc: 0, bc: 0, nn: 0 }
-    ;(blocks.data || []).forEach((b) => { if (loadByAcct[b.account] != null) loadByAcct[b.account] += (b.end_min - b.start_min) / 60 })
-    livePlan.filter((r) => r.week_start === weekStart && r.status !== 'done').forEach((r) => { if (loadByAcct[r.account] != null) loadByAcct[r.account] += (r.end_min - r.start_min) / 60 })
-    const capLine = ['tc', 'bc', 'nn'].map((a) => `${a}: ${loadByAcct[a].toFixed(1)}h of ~40h cap${loadByAcct[a] > 40 ? ' ⚠ OVER' : loadByAcct[a] > 36 ? ' (near cap)' : ''}`).join(' · ')
+    // per-CONTRACT load this week (caps are per contract, not per account):
+    // confirmed mirrored hours + planned hours, per project, vs its weekly_cap_hours
+    const loadByProj = {}
+    ;(blocks.data || []).forEach((b) => { if (b.confirmed_project_id) { const k = String(b.confirmed_project_id); loadByProj[k] = (loadByProj[k] || 0) + (b.end_min - b.start_min) / 60 } })
+    livePlan.filter((r) => r.week_start === weekStart).forEach((r) => { const k = String(r.project_id); loadByProj[k] = (loadByProj[k] || 0) + (r.end_min - r.start_min) / 60 })
+    const capLine = Object.entries(loadByProj).map(([pid, h]) => {
+      const p = mapsRef.current.byId.get(pid); if (!p) return null
+      const cap = Number(p.weekly_cap_hours) || 0
+      return `- ${p.channel}: ${h.toFixed(1)}h this week` + (cap > 0 ? ` / ${cap}h cap${h > cap ? ' ⚠ OVER — overflow must move to next week' : h > cap * 0.9 ? ' (near cap)' : ''}` : ' (no cap set)')
+    }).filter(Boolean).join('\n') || '(no logging load yet this week)'
 
     const mirByAcct = { tc: { h: 0, c: 0 }, bc: { h: 0, c: 0 }, nn: { h: 0, c: 0 } }
     ;(blocks.data || []).forEach((b) => { const m = mirByAcct[b.account]; if (!m) return; const hh = (b.end_min - b.start_min) / 60; m.h += hh; if (b.confirmed_project_id) m.c += hh })
@@ -189,7 +194,7 @@ export default function Assistant() {
 
     return `You are the FutureForge Ops assistant for Daniel (admin, agency owner). Today: ${isoDate(new Date())}. Current week (Mon): ${weekStart}.
 Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "PM" hours = project-management time: internal cost only, never billed or logged on Upwork, and never suggested for logging. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed.
-IMPORTANT — the ~40h/week Upwork cap: each Upwork account can log at most ~40h per week. When devs work more than can be logged this week, the overflow is logged NEXT week instead. When Daniel says hours must roll over (or an account is at/over cap), move or create the overflow slots in NEXT week's plan: use plan_move/plan_add with week_start='${nextWeek}' (Mondays only: '${weekStart}' = current, '${nextWeek}' = next). Prefer moving the lowest-priority / latest slots. Keep each account's current-week total ≤ 40h unless told otherwise. The Week Suggestions page shows next week via the ▶ arrow. Times are 24h UTC, days Mon..Sun.
+IMPORTANT — Upwork weekly caps are PER CONTRACT (per project), not per account, and different contracts have different caps (projects.weekly_cap_hours; null = no cap known). When a contract's worked hours exceed what can be logged this week, the overflow is logged NEXT week on that same contract. When Daniel says hours must roll over (or a contract is at/over its cap in the CONTRACT LOAD section), move or create the overflow slots in NEXT week's plan: use plan_move/plan_add with week_start='${nextWeek}' (Mondays only: '${weekStart}' = current, '${nextWeek}' = next). Prefer moving the latest/lowest-priority slots of that contract. Never exceed a contract's cap in the current week unless told otherwise. The Week Suggestions page shows next week via the ▶ arrow. Times are 24h UTC, days Mon..Sun.
 Rules for you: be concise and concrete; money in $ with gross/net stated. Use get_project_detail before deep claims about one project. Propose writes via tools ONE at a time with a one-line reason first; every write shows the user an approve/decline card. Use exact ids/channels from this snapshot — never invent them. If asked something the data can't answer, say so.
 
 === ACTIVE PROJECTS (lifetime + this week) ===
@@ -201,7 +206,7 @@ ${planLines}
 === WEEK PLAN (NEXT week, ${nextWeek}) ===
 ${planLinesNext}
 
-=== ACCOUNT LOAD vs UPWORK CAP (this week: mirrored + planned) ===
+=== CONTRACT LOAD vs WEEKLY CAPS (this week: mirrored confirmed + planned) ===
 ${capLine}
 
 === MIRROR (on Upwork, week of ${weekStart}) ===

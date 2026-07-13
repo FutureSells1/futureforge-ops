@@ -80,7 +80,7 @@ export default function WeekSuggestions() {
     setLoaded(false)
     ;(async () => {
       const [pj, he, bl, pl, ms] = await Promise.all([
-        supabase.from('projects').select('id, channel, project_code, display_name, client_name, account, billing_type, billing_rate').eq('status', 'active'),
+        supabase.from('projects').select('id, channel, project_code, display_name, client_name, account, billing_type, billing_rate, weekly_cap_hours').eq('status', 'active'),
         supabase.from('hours_entries').select('project_id, work_date, hours, task, is_pm').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
         supabase.from('upwork_blocks').select('*').eq('week_start', weekStart),
         supabase.from('week_log_plan').select('*').eq('week_start', weekStart),
@@ -240,6 +240,8 @@ ${JSON.stringify(items)}`
     })
     const takeFrom = (d, mins, pid, out) => {
       let left = mins
+      // human-friendly ordering: fill from 09:00 forward first; 00:00–09:00 is overflow only
+      gaps[d].sort((a, b) => ((a[0] < 540 ? a[0] + 1440 : a[0]) - (b[0] < 540 ? b[0] + 1440 : b[0])))
       for (let i = 0; i < gaps[d].length && left >= MIN_CHUNK; i++) {
         const [s, e] = gaps[d][i]
         const use = Math.min(left, e - s)
@@ -340,6 +342,14 @@ ${JSON.stringify(items)}`
   }
 
 
+  // per-contract weekly load: mirrored (confirmed) + planned, for cap warnings
+  const contractLoad = useMemo(() => {
+    const m = {}
+    acctMirror.forEach((b) => { if (b.confirmed_project_id) { const k = String(b.confirmed_project_id); m[k] = (m[k] || 0) + (b.end_min - b.start_min) / 60 } })
+    acctPlan.forEach((r) => { const k = String(r.project_id); m[k] = (m[k] || 0) + (r.end_min - r.start_min) / 60 })
+    return m
+  }, [acctMirror, acctPlan])
+
   // display range: zoom the grid to the hours that actually have content (+1h pad)
 
   const codeOf = (pid) => { const p = projById.get(String(pid)); return p ? (p.project_code || p.channel) : '?' }
@@ -403,15 +413,20 @@ ${JSON.stringify(items)}`
       {loaded && (() => {
         const planMin = acctPlan.reduce((a, r) => a + (r.end_min - r.start_min), 0)
         const doneMin = acctPlan.filter((r) => r.status === 'done').reduce((a, r) => a + (r.end_min - r.start_min), 0)
-        const mirMin = acctMirror.reduce((a, b) => a + (b.end_min - b.start_min), 0)
-        const capLoad = (mirMin + planMin) / 60
+        const capped = accProjects.filter((p) => Number(p.weekly_cap_hours) > 0)
+        const over = capped.filter((p) => (contractLoad[String(p.id)] || 0) > Number(p.weekly_cap_hours))
+        const near = capped.filter((p) => !over.includes(p) && (contractLoad[String(p.id)] || 0) > Number(p.weekly_cap_hours) * 0.9)
         return (
           <div className="wtotals d-only">
             <span><strong>{((planMin - doneMin) / 60).toFixed(1)}h</strong> left to log</span>
             <span className="sep">·</span>
             <span><strong>{(doneMin / 60).toFixed(1)}h</strong> done</span>
-            <span className="sep">·</span>
-            <span>account load <strong className={capLoad > 40 ? 'neg' : capLoad > 36 ? '' : 'pos'}>{capLoad.toFixed(1)} / 40h</strong> (Upwork cap)</span>
+            {capped.length > 0 && <>
+              <span className="sep">·</span>
+              <span>contract caps: {over.length > 0
+                ? <strong className="neg">{over.length} over</strong>
+                : near.length > 0 ? <strong>{near.length} near cap</strong> : <strong className="pos">all ok</strong>}</span>
+            </>}
           </div>
         )
       })()}
@@ -510,9 +525,18 @@ ${JSON.stringify(items)}`
                     <span className={'wchip-h' + (r.toLog >= MIN_CHUNK ? '' : ' ok')}>{r.toLog >= MIN_CHUNK ? hrs(r.toLog / 60) + ' to log' : 'all logged ✓'}</span>
                   </div>
                   <div className="wchip-bar"><span style={{ width: pct + '%' }} /></div>
-                  {rate > 0 && r.toLog >= MIN_CHUNK && (
-                    <div className="wchip-sub">≈{money(r.toLog / 60 * rate)} gross · {money(net(r.toLog / 60 * rate))} net</div>
-                  )}
+                  {(() => {
+                    const cap = Number(r.p.weekly_cap_hours) || 0
+                    const load = contractLoad[r.pid] || 0
+                    if (cap > 0) return (
+                      <div className={'wchip-sub' + (load > cap ? ' neg' : load > cap * 0.9 ? ' warn' : '')}>
+                        {load.toFixed(1)} / {cap}h contract cap{load > cap ? ' ⚠ over — roll overflow to next week' : ''}
+                      </div>
+                    )
+                    return rate > 0 && r.toLog >= MIN_CHUNK
+                      ? <div className="wchip-sub">≈{money(r.toLog / 60 * rate)} gross · {money(net(r.toLog / 60 * rate))} net</div>
+                      : null
+                  })()}
                 </div>
               )
             })}
@@ -524,46 +548,62 @@ ${JSON.stringify(items)}`
           </div>
         )}
 
-        {/* the board */}
-        <div className="wboard">
-          {DAYS.map((dname, d) => {
-            const dayPlan = acctPlan.filter((r) => r.day === d).sort((a, b) => a.start_min - b.start_min)
-            const mirH = acctMirror.filter((b) => b.day === d).reduce((a, b) => a + (b.end_min - b.start_min), 0) / 60
-            const planH = dayPlan.reduce((a, r) => a + (r.end_min - r.start_min), 0) / 60
-            const today = plusDays(weekStart, d) === isoDate(new Date())
-            return (
-              <div className={'wday' + (today ? ' today' : '')} key={d}>
-                <div className="wday-head">
-                  <span className="wday-name">{dname}</span>
-                  <span className="wday-date mono">{plusDays(weekStart, d).slice(5).replace('-', '/')}</span>
-                  {planH > 0 && <span className="wday-tot mono">{planH.toFixed(1)}h</span>}
-                </div>
-                {mirH > 0 && <div className="wday-mir">on Upwork already: {mirH.toFixed(1)}h</div>}
-                {dayPlan.length === 0 && <div className="wday-empty">—</div>}
-                {dayPlan.map((r) => {
-                  const done = r.status === 'done'
-                  const memo = memoOf(r)
-                  return (
-                    <div className={'wcard' + (done ? ' done' : '')} key={r.id} style={{ borderLeftColor: done ? 'var(--ok)' : COLORS[acct] }}>
-                      <div className="wcard-top">
-                        <span className="wcard-time mono">{mlab(r.start_min)} – {mlab(r.end_min)}</span>
-                        <span className="wcard-actions">
-                          {memo && <button className="wbtn" title="Copy memo" onClick={() => copyMemo(r.id, memo)}>{copied === r.id ? '✓' : '⧉'}</button>}
-                          <button className="wbtn" title={done ? 'Mark not logged' : 'Mark logged'} onClick={() => setDone(r, !done)}>{done ? '↺' : '✓'}</button>
-                          <button className="wbtn" title="Remove" onClick={() => removeRow(r)}>✕</button>
-                        </span>
+        {/* the board: one full-width row per day */}
+        {DAYS.map((dname, d) => {
+          const dayPlan = acctPlan.filter((r) => r.day === d).sort((a, b) => a.start_min - b.start_min)
+          const mirH = acctMirror.filter((b) => b.day === d).reduce((a, b) => a + (b.end_min - b.start_min), 0) / 60
+          const openH = dayPlan.filter((r) => r.status !== 'done').reduce((a, r) => a + (r.end_min - r.start_min), 0) / 60
+          const today = plusDays(weekStart, d) === isoDate(new Date())
+          if (dayPlan.length === 0 && mirH === 0) return null
+          return (
+            <section className={'dayrow' + (today ? ' today' : '')} key={d}>
+              <header className="dayrow-head">
+                <span className="dayrow-name">{today ? '● ' : ''}{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][d]}</span>
+                <span className="dayrow-date mono">{plusDays(weekStart, d).slice(5).replace('-', '/')}</span>
+                <span className="dayrow-meta">
+                  {openH > 0 && <span className="dm togo">{openH.toFixed(1)}h to log</span>}
+                  {mirH > 0 && <span className="dm">{mirH.toFixed(1)}h on Upwork</span>}
+                  {dayPlan.length > 0 && openH === 0 && <span className="dm okd">day done ✓</span>}
+                </span>
+              </header>
+              {dayPlan.length > 0 && (
+                <div className="dayrow-cards">
+                  {dayPlan.map((r) => {
+                    const done = r.status === 'done'
+                    const memo = memoOf(r)
+                    const h = (r.end_min - r.start_min) / 60
+                    return (
+                      <div className={'lcard' + (done ? ' done' : '')} key={r.id}>
+                        <div className="lcard-top">
+                          <span className="lcard-dot" style={{ background: done ? 'var(--ok)' : COLORS[acct] }} />
+                          <span className="lcard-proj">{nameOf(r.project_id)}</span>
+                          <span className="lcard-h mono">{h.toFixed(1)}h</span>
+                        </div>
+                        {memo && <div className="lcard-memo">{memo}</div>}
+                        <div className="lcard-foot">
+                          <span className="lcard-time mono">{mlab(r.start_min)}–{mlab(r.end_min)}</span>
+                          <span className="lcard-actions">
+                            {memo && <button className="lbtn" onClick={() => copyMemo(r.id, memo)}>{copied === r.id ? '✓ copied' : '⧉ memo'}</button>}
+                            <button className={'lbtn' + (done ? '' : ' go')} onClick={() => setDone(r, !done)}>{done ? '↺ undo' : '✓ logged'}</button>
+                            <button className="lbtn quiet" onClick={() => removeRow(r)}>✕</button>
+                          </span>
+                        </div>
                       </div>
-                      <div className="wcard-proj">{done ? '✓ ' : ''}{nameOf(r.project_id)}</div>
-                      {memo && <div className="wcard-memo">{memo}</div>}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-        <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>
-          Each card = one Upwork entry: copy the memo (⧉), log that time range on Upwork, mark it ✓. Cards sit on the day the work actually happened.
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )
+        })}
+        {loaded && acctPlan.length === 0 && (
+          <div className="card" style={{ padding: 28, textAlign: 'center' }}>
+            <div style={{ fontSize: 14, marginBottom: 6 }}>No plan for this week yet</div>
+            <div className="muted" style={{ fontSize: 12.5 }}>Hit <strong>Generate suggestions</strong> (or ✨ AI for polished memos) and each day's logging becomes a card here.</div>
+          </div>
+        )}
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 12 }}>
+          One card = one Upwork entry: ⧉ copy the memo → log that time on Upwork → ✓ logged. Hours sit on the day the work actually happened.
         </div>
       </div>
 

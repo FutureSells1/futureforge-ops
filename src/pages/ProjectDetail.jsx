@@ -287,7 +287,9 @@ export default function ProjectDetail() {
 function BillingPanel({ proj, milestones, onChanged }) {
   const isHourly = proj.billing_type === 'hourly'
   const [rate, setRate] = useState(proj.billing_rate)
+  const [cap, setCap] = useState(proj.weekly_cap_hours ?? '')
   useEffect(() => setRate(proj.billing_rate), [proj.billing_rate])
+  useEffect(() => setCap(proj.weekly_cap_hours ?? ''), [proj.weekly_cap_hours])
 
   async function setType(t) {
     await supabase.from('projects').update({ billing_type: t }).eq('id', proj.id)
@@ -296,6 +298,12 @@ function BillingPanel({ proj, milestones, onChanged }) {
   async function saveRate() {
     if (Number(rate) === Number(proj.billing_rate)) return
     await supabase.from('projects').update({ billing_rate: Number(rate) || 0 }).eq('id', proj.id)
+    onChanged()
+  }
+  async function saveCap() {
+    const v = cap === '' ? null : Number(cap)
+    if (v === (proj.weekly_cap_hours ?? null)) return
+    await supabase.from('projects').update({ weekly_cap_hours: v }).eq('id', proj.id)
     onChanged()
   }
   async function addMilestone() {
@@ -331,6 +339,9 @@ function BillingPanel({ proj, milestones, onChanged }) {
             <span className="muted" style={{ fontSize: 13 }}>client rate $/h</span>
             <input type="number" inputMode="decimal" className="mono" min="0" step="0.5" value={rate}
               onChange={(e) => setRate(e.target.value)} onBlur={saveRate} style={{ width: 90 }} />
+            <span className="muted" style={{ fontSize: 13 }}>weekly cap (h)</span>
+            <input type="number" inputMode="decimal" className="mono" min="0" step="1" value={cap} placeholder="none"
+              onChange={(e) => setCap(e.target.value)} onBlur={saveCap} style={{ width: 80 }} />
           </>
         )}
       </div>
