@@ -477,12 +477,14 @@ html{-webkit-text-size-adjust:100%;}
 .calday-head.today{color:#8f96ff;}
 .calday-body{position:relative;}
 .calline{position:absolute;left:0;right:0;height:1px;background:var(--line);opacity:.5;}
-.calblk{position:absolute;left:5px;right:5px;border-radius:8px;cursor:pointer;overflow:hidden;
-  display:flex;align-items:flex-start;padding:4px 8px;transition:filter .12s;}
-.calblk:hover{filter:brightness(1.2);}
+.calblk{position:absolute;left:4px;right:4px;border-radius:7px;cursor:pointer;overflow:hidden;
+  border:1px solid;padding:5px 8px 5px 12px;transition:filter .12s;}
+.calblk::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--bar);}
+.calblk:hover{filter:brightness(1.25);}
 .calblk.sel{outline:2px solid var(--ink);outline-offset:1px;}
-.calblk.mir{background:var(--panel2);border:1px dashed var(--line2);cursor:default;pointer-events:none;}
-.calblk.done{opacity:.6;}
-.calblk-lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;color:#fff;background:rgba(11,16,32,.45);
-  border-radius:5px;padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.calblk.mir{background:rgba(255,255,255,.04);border:1px dashed var(--line2);cursor:default;pointer-events:none;padding:0;}
+.calblk.mir::before{display:none;}
+.calblk.done{opacity:.5;}
+.cb-name{font-size:11px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+.cb-sub{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .caldetail{margin-top:12px;max-width:520px;}

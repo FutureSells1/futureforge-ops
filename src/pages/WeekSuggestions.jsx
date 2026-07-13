@@ -40,6 +40,20 @@ function memoChunks(tasks) {
 }
 
 const pad = (n) => String(n).padStart(2, '0')
+// stable per-project color: hash the channel to a hue that fits the dark theme
+function projHue(ch) {
+  let h = 0
+  for (const c of String(ch || '')) h = (h * 31 + c.charCodeAt(0)) % 360
+  return h
+}
+const projColors = (ch) => {
+  const h = projHue(ch)
+  return {
+    bar: `hsl(${h} 70% 64%)`,
+    bg: `hsl(${h} 65% 60% / .14)`,
+    border: `hsl(${h} 60% 60% / .3)`,
+  }
+}
 const mlab = (m) => pad(Math.floor((m % 1440) / 60)) + ':' + pad(m % 60)
 const r10 = (m) => Math.round(m / 10) * 10
 const isoDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
@@ -653,14 +667,17 @@ ${JSON.stringify(items)}`
                         ))}
                         {acctPlan.filter((r) => r.day === d).map((r) => {
                           const done = r.status === 'done'
-                          const h = Math.max(16, (r.end_min - r.start_min) / 60 * PX - 2)
+                          const h = Math.max(18, (r.end_min - r.start_min) / 60 * PX - 3)
+                          const p = projById.get(String(r.project_id))
+                          const col = projColors(p ? p.channel : '?')
                           return (
                             <div key={r.id}
                               className={'calblk' + (done ? ' done' : '') + (calSel === r.id ? ' sel' : '')}
-                              style={{ top: top(r.start_min), height: h, background: done ? 'var(--ok)' : COLORS[acct] }}
+                              style={{ top: top(r.start_min), height: h, background: col.bg, borderColor: col.border, '--bar': done ? 'var(--ok)' : col.bar }}
                               title={nameOf(r.project_id) + ' · ' + mlab(r.start_min) + '–' + mlab(r.end_min)}
                               onClick={() => setCalSel(calSel === r.id ? null : r.id)}>
-                              {h >= 24 && <span className="calblk-lbl">{done ? '✓ ' : ''}{codeOf(r.project_id)} · {((r.end_min - r.start_min) / 60).toFixed(1)}h</span>}
+                              <div className="cb-name">{done ? '✓ ' : ''}{codeOf(r.project_id)}</div>
+                              {h >= 40 && <div className="cb-sub">{((r.end_min - r.start_min) / 60).toFixed(1)}h · {mlab(r.start_min)}–{mlab(r.end_min)}</div>}
                             </div>
                           )
                         })}
@@ -673,7 +690,7 @@ ${JSON.stringify(items)}`
                 <div className="caldetail">
                   <div className="lcard" style={{ border: '1px solid var(--line2)' }}>
                     <div className="lcard-top">
-                      <span className="lcard-dot" style={{ background: sel.status === 'done' ? 'var(--ok)' : COLORS[acct] }} />
+                      <span className="lcard-dot" style={{ background: sel.status === 'done' ? 'var(--ok)' : projColors((projById.get(String(sel.project_id)) || {}).channel).bar }} />
                       <span className="lcard-proj">{nameOf(sel.project_id)}</span>
                       <span className="lcard-h mono">{((sel.end_min - sel.start_min) / 60).toFixed(1)}h</span>
                     </div>
