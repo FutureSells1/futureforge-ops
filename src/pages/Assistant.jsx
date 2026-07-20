@@ -22,7 +22,7 @@ const dayIdx = (name) => DAYS.findIndex((d) => d.toLowerCase() === String(name).
 const WRITE_TOOLS = new Set(['plan_add', 'plan_move', 'plan_delete', 'plan_mark_logged', 'set_week_billed', 'update_estimate', 'mirror_assign'])
 
 const TOOLS = [
-  { name: 'get_project_detail', description: 'Fetch full detail for one project: weekly billed history, milestones, estimate, recent daily dev hours.', input_schema: { type: 'object', properties: { channel: { type: 'string', description: 'project channel, e.g. tc-ct-ocf' } }, required: ['channel'] } },
+  { name: 'get_project_detail', description: 'Fetch full detail for one project: weekly billed history, milestones, estimate, and PER-TASK dev hours by date (task_hours) — use these to make slot durations match real task hours. Pass since (YYYY-MM-DD, up to 60 days back) for catch-up scenarios like "everything after Jul 3".', input_schema: { type: 'object', properties: { channel: { type: 'string', description: 'project channel, e.g. tc-ct-ocf' }, since: { type: 'string', description: 'optional start date YYYY-MM-DD; defaults to 2 weeks before the current week' } }, required: ['channel'] } },
   { name: 'plan_add', description: 'Add a suggested logging slot to the week plan (Week Suggestions page). Can target the current week or a future week (e.g. overflow when a week hits the Upwork logging cap).', input_schema: { type: 'object', properties: { account: { type: 'string', enum: ['tc', 'bc', 'nn'] }, channel: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string', description: 'HH:MM 24h' }, end: { type: 'string', description: 'HH:MM 24h' }, memo: { type: 'string', description: 'Upwork memo for this block, max 144 chars' }, week_start: { type: 'string', description: 'Monday YYYY-MM-DD of the target week. Omit for the current week; use next Monday for overflow.' } }, required: ['account', 'channel', 'day', 'start', 'end'] } },
   { name: 'plan_move', description: 'Move/resize an existing plan slot, optionally updating its memo and/or moving it to a different week (e.g. pushing overflow to next week). Use the plan row id from the data snapshot.', input_schema: { type: 'object', properties: { plan_id: { type: 'string' }, day: { type: 'string', description: 'Mon..Sun' }, start: { type: 'string' }, end: { type: 'string' }, memo: { type: 'string', description: 'new Upwork memo, max 144 chars' }, week_start: { type: 'string', description: 'Monday YYYY-MM-DD to move the slot to a different week' } }, required: ['plan_id', 'day', 'start', 'end'] } },
   { name: 'plan_delete', description: 'Delete plan slots by id.', input_schema: { type: 'object', properties: { plan_ids: { type: 'array', items: { type: 'string' } } }, required: ['plan_ids'] } },
@@ -195,7 +195,7 @@ export default function Assistant() {
 
     return `You are the FutureForge Ops assistant for Daniel (admin, agency owner). Today: ${isoDate(new Date())}. Current week (Mon): ${weekStart}.
 Business model: 3 Upwork accounts (tc=Thiago, bc=Bernardo, nn=Nick). Dev hours come from timesheets (= cost side, devs paid hourly). Revenue: hourly projects = manually entered weekly billed GROSS amounts; fixed projects = released milestones. ALL revenue nets 10% Upwork fee (net = gross × 0.9). billing_rate is a reference quote, never auto-billed. "PM" hours = project-management time: internal cost only, never billed or logged on Upwork, and never suggested for logging. "Mirror" = hours actually logged on Upwork (read from screen). "Week plan" = suggested day/time slots still to log on Upwork this week (Week Suggestions page) — this is what plan_* tools edit. Mirrored blocks can be (re)assigned to projects with mirror_assign — confirmed mirror hours count as "already on Upwork" for that project. Plan slots carry an Upwork memo, HARD LIMIT 144 chars — never exceed it; split into multiple slots if needed.
-IMPORTANT — Upwork weekly caps are PER CONTRACT (per project), not per account, and different contracts have different caps (projects.weekly_cap_hours; null = no cap known). When a contract's worked hours exceed what can be logged this week, the overflow is logged NEXT week on that same contract. When Daniel says hours must roll over (or a contract is at/over its cap in the CONTRACT LOAD section), move or create the overflow slots in NEXT week's plan: use plan_move/plan_add with week_start='${nextWeek}' (Mondays only: '${weekStart}' = current, '${nextWeek}' = next). Prefer moving the latest/lowest-priority slots of that contract. Never exceed a contract's cap in the current week unless told otherwise. The Week Suggestions page shows next week via the ▶ arrow. Times are 24h UTC, days Mon..Sun.
+IMPORTANT — Upwork weekly caps are PER CONTRACT (per project), not per account, and different contracts have different caps (projects.weekly_cap_hours; null = no cap known). When a contract's worked hours exceed what can be logged this week, the overflow is logged NEXT week on that same contract. When Daniel says hours must roll over (or a contract is at/over its cap in the CONTRACT LOAD section), move or create the overflow slots in NEXT week's plan: use plan_move/plan_add with week_start='${nextWeek}' (Mondays only: '${weekStart}' = current, '${nextWeek}' = next). Prefer moving the latest/lowest-priority slots of that contract. Never exceed a contract's cap in the current week unless told otherwise. The Week Suggestions page shows next week via the ▶ arrow.\nMEMO–HOURS CONSISTENCY: get_project_detail returns task_hours (per-task, per-date). A slot's memo must only name tasks whose real hours fill that slot's duration — never stretch one small task over a big slot. Combine consecutive tasks so their hours sum to the slot length (±15min), splitting a task across two slots when needed. When catching up from a date, pass since to get_project_detail and consume tasks in date order. Times are 24h UTC, days Mon..Sun.
 Rules for you: be concise and concrete; money in $ with gross/net stated. Use get_project_detail before deep claims about one project. Propose writes via tools ONE at a time with a one-line reason first; every write shows the user an approve/decline card. Use exact ids/channels from this snapshot — never invent them. If asked something the data can't answer, say so.
 
 === ACTIVE PROJECTS (lifetime + this week) ===
@@ -242,14 +242,29 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
             supabase.from('project_week_revenue').select('week_start, amount').eq('project_id', p.id).order('week_start', { ascending: false }).limit(8),
             supabase.from('project_milestones').select('name, amount, released, position').eq('project_id', p.id).order('position'),
             supabase.from('project_estimates').select('*').eq('project_id', p.id).maybeSingle(),
-            supabase.from('hours_entries').select('work_date, hours, dev_id, task').eq('project_id', p.id).gte('work_date', plusDays(weekStart, -14)).limit(2000),
+            supabase.from('hours_entries').select('work_date, hours, dev_id, task, is_pm').eq('project_id', p.id)
+              .gte('work_date', (() => {
+                const dflt = plusDays(weekStart, -14)
+                if (!i.since || !/^\d{4}-\d{2}-\d{2}$/.test(i.since)) return dflt
+                const floor = plusDays(weekStart, -60)
+                return i.since < floor ? floor : i.since
+              })()).order('work_date').limit(3000),
           ])
-          const byDate = {}, tasks = []
+          const byDate = {}, taskHours = {}
+          let pmTotal = 0
           ;(he.data || []).forEach((e) => {
+            if (e.is_pm) { pmTotal += Number(e.hours); return } // PM: never logged on Upwork
             byDate[e.work_date] = (byDate[e.work_date] || 0) + Number(e.hours)
-            if (e.task) String(e.task).split(' \u00b7 ').forEach((t) => { t = t.trim(); if (t && !tasks.includes(t)) tasks.push(t) })
+            // one row per task since the per-task sync; old rows may still hold joined names
+            const t = String(e.task || '').trim() || '(no task noted)'
+            const k = e.work_date + ' | ' + t
+            taskHours[k] = (taskHours[k] || 0) + Number(e.hours)
           })
-          return ok(JSON.stringify({ channel: p.channel, billing: p.billing_type, rate_ref: p.billing_rate, weekly_billed_gross: rev.data, milestones: ms.data, estimate: es.data, dev_hours_last_3wks_by_date: byDate, tasks_last_3wks: tasks.slice(0, 40) }))
+          const task_hours = Object.entries(taskHours).map(([k, h]) => {
+            const [date, task] = k.split(' | ')
+            return { date, task, hours: Math.round(h * 100) / 100 }
+          })
+          return ok(JSON.stringify({ channel: p.channel, billing: p.billing_type, rate_ref: p.billing_rate, weekly_cap_hours: p.weekly_cap_hours ?? null, weekly_billed_gross: rev.data, milestones: ms.data, estimate: es.data, loggable_hours_by_date: byDate, task_hours, pm_hours_excluded: Math.round(pmTotal * 100) / 100 }))
         }
         case 'plan_add': {
           const p = proj(i.channel); if (!p) return fail('unknown channel ' + i.channel)
