@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
+import { fmtWeekRange, fmtStamp } from '../lib/format.js'
 
 // ============================================================
 // Assistant (Labs) — chat with full project context.
@@ -36,8 +37,8 @@ function toolSummary(tu, byChannel) {
   const i = tu.input || {}
   switch (tu.name) {
     case 'get_project_detail': return 'Look up ' + i.channel
-    case 'plan_add': return 'Add plan slot: ' + i.channel + ' · ' + i.day + ' ' + i.start + '–' + i.end + ' (' + i.account + ')' + (i.week_start ? ' · week of ' + i.week_start : '')
-    case 'plan_move': return 'Move plan slot ' + String(i.plan_id).slice(0, 8) + ' → ' + i.day + ' ' + i.start + '–' + i.end + (i.week_start ? ' · week of ' + i.week_start : '')
+    case 'plan_add': return 'Add plan slot: ' + i.channel + ' · ' + i.day + ' ' + i.start + '–' + i.end + ' (' + i.account + ')' + (i.week_start ? ' · ' + fmtWeekRange(i.week_start) : '')
+    case 'plan_move': return 'Move plan slot ' + String(i.plan_id).slice(0, 8) + ' → ' + i.day + ' ' + i.start + '–' + i.end + (i.week_start ? ' · ' + fmtWeekRange(i.week_start) : '')
     case 'plan_delete': return 'Delete ' + (i.plan_ids || []).length + ' plan slot(s)'
     case 'plan_mark_logged': return (i.logged ? 'Mark logged: ' : 'Mark NOT logged: ') + (i.plan_ids || []).length + ' slot(s)'
     case 'set_week_billed': return 'Set billed: ' + i.channel + ' · week ' + i.week_start + ' → $' + Number(i.amount).toFixed(2) + ' gross'
@@ -429,7 +430,7 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
           {chats.map((c) => (
             <div key={c.id} className={'agrow' + (c.id === chatId ? ' donerow' : '')} style={{ cursor: 'pointer' }} onClick={() => openChat(c.id)}>
               <span className="agname" style={{ textDecoration: 'none' }}>{c.title}</span>
-              <span className="agtime mono">{new Date(c.updated_at).toLocaleDateString()} {new Date(c.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="agtime">{fmtStamp(c.updated_at)}</span>
               <button className="ghost agbtn" onClick={(e) => deleteChat(c.id, e)}>✕</button>
             </div>
           ))}

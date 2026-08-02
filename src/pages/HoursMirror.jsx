@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { ACCOUNTS, COLORS, money, hrs, net } from '../lib/format.js'
+import { ACCOUNTS, COLORS, money, hrs, net, fmtWeekRange } from '../lib/format.js'
 import { supabase, configured } from '../lib/supabase.js'
 
 // ============================================================
@@ -395,7 +395,7 @@ export default function HoursMirror() {
     if (error) { setStatus({ msg: '', warn: 'Push failed: ' + error.message }); return }
     setWeekRev((prev) => ({ ...prev, [r.pid]: amt }))
     setPushedOk((prev) => ({ ...prev, [r.pid]: true }))
-    setStatus({ msg: 'Pushed ' + money(amt) + ' to ' + (r.p.display_name || r.p.channel) + ' · week of ' + weekStart, warn: '' })
+    setStatus({ msg: 'Pushed ' + money(amt) + ' to ' + (r.p.display_name || r.p.channel) + ' · ' + fmtWeekRange(weekStart), warn: '' })
   }
 
   const selBlock = blocks.find((b) => b.id === selected)
@@ -406,7 +406,7 @@ export default function HoursMirror() {
     <>
       <div className="pagehead">
         <h1>Hours Mirror</h1>
-        <span className="sub">log on Upwork · it watches · free time stays obvious · all times UTC{labs ? ' · week of ' + weekStart : ''}</span>
+        <span className="sub">log on Upwork · it watches · free time stays obvious · all times UTC{labs ? ' · ' + fmtWeekRange(weekStart) : ''}</span>
       </div>
       <div className="m-only notice" style={{ marginBottom: 12 }}>
         Screen capture needs desktop Chrome — do mirror sessions on your Mac. Below: this week's mirrored results and provisional margins, live.
@@ -477,7 +477,7 @@ export default function HoursMirror() {
             ))}
           </div>
           <div className="card" style={{ marginBottom: 12 }}>
-            <div className="paneltitle"><span className="swatch" style={{ background: COLORS[acct] }} />Mirrored — week of {weekStart}</div>
+            <div className="paneltitle"><span className="swatch" style={{ background: COLORS[acct] }} />Mirrored — {fmtWeekRange(weekStart)}</div>
             <div className="mono">
               {DAYS.map((d, i) => {
                 const dayBlocks = blocks.filter((b) => b.acct === acct && b.day === i)
@@ -581,7 +581,7 @@ export default function HoursMirror() {
         <div className="card" style={{ marginTop: 14 }}>
           <div className="paneltitle">
             <span className="swatch" style={{ background: COLORS[acct] }} />
-            Week summary — {NAMES[acct]} · provisional · week of {weekStart}
+            Week summary — {NAMES[acct]} · provisional · {fmtWeekRange(weekStart)}
           </div>
           {strip.rows.length === 0 ? (
             <div className="muted" style={{ fontSize: 12.5 }}>No mirrored hours assigned to projects yet — confirm a few suggestions and the margin math appears here.</div>

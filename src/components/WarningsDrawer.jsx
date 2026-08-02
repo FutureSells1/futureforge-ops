@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { supabase, configured } from '../lib/supabase.js'
-import { hrs } from '../lib/format.js'
+import { hrs, fmtWeekRange } from '../lib/format.js'
 
 export default function WarningsDrawer({ open, onClose }) {
   const [warnings, setWarnings] = useState([])
@@ -36,7 +36,7 @@ export default function WarningsDrawer({ open, onClose }) {
         {warnings.map((w) => (
           <div className="witem" key={w.id}>
             <div style={{ display: 'flex', alignItems: 'baseline' }}>
-              <span><strong>{w.dev_name}</strong> · week of <span className="mono">{w.week_start}</span></span>
+              <span><strong>{w.dev_name}</strong> · {fmtWeekRange(w.week_start)}</span>
               <button className="ghost" style={{ marginLeft: 'auto', padding: '1px 8px', fontSize: 11 }}
                 onClick={() => dismissWarning(w.id)}>dismiss</button>
             </div>

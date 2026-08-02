@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useParams, useOutletContext } from 'react-router-dom'
 import { supabase, configured } from '../lib/supabase.js'
-import { ACCOUNTS, COLORS, money, money2, hrs, net, dayName } from '../lib/format.js'
+import { ACCOUNTS, COLORS, money, money2, hrs, net, dayName, fmtWeekRange, fmtDate, fmtStamp } from '../lib/format.js'
 import { postToSlack } from '../lib/slack.js'
 
 function weekStart(dateStr) {
@@ -9,12 +9,7 @@ function weekStart(dateStr) {
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7))
   return d.toISOString().slice(0, 10)
 }
-function fmtWeek(ws) {
-  const a = new Date(ws + 'T00:00:00Z')
-  const b = new Date(a); b.setUTCDate(a.getUTCDate() + 6)
-  const f = (x) => x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-  return f(a) + ' – ' + f(b) + ', ' + a.getUTCFullYear()
-}
+const fmtWeek = fmtWeekRange
 
 export default function ProjectDetail() {
   const { id } = useParams()
@@ -484,7 +479,7 @@ function EstimationTab({ projectId, loggedHours, userEmail, channel, displayName
           style={{ width: '100%', minHeight: 110, background: 'var(--panel2)', border: '1px solid var(--line2)', borderRadius: 8, color: 'var(--ink)', font: 'inherit', fontSize: 13, padding: 10, resize: 'vertical' }} />
         <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
           Everyone (admins and devs) can edit this tab. Update "estimated remaining" as work evolves — projected total shows whether the project lands inside the initial estimate.
-          {est.updated_at && <> · last update {new Date(est.updated_at).toLocaleString()} {est.updated_by && 'by ' + est.updated_by}</>}
+          {est.updated_at && <> · last update {fmtStamp(est.updated_at)} {est.updated_by && 'by ' + est.updated_by}</>}
           {saved && <> · {saved}</>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>

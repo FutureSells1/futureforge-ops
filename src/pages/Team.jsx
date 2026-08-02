@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { supabase, configured } from '../lib/supabase.js'
-import { hrs, money, DOW } from '../lib/format.js'
+import { hrs, money, DOW, fmtWeekRange, fmtDay } from '../lib/format.js'
 
 const WEEKS_SHOWN = 8
 const DAILY_MIN = 8
@@ -14,11 +14,7 @@ const iso = (d) => d.toISOString().slice(0, 10)
 function addDays(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return iso(d)
 }
-function fmtWeek(ws) {
-  const a = new Date(ws + 'T00:00:00Z'); const b = new Date(a); b.setUTCDate(a.getUTCDate() + 6)
-  const f = (x) => x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-  return f(a) + ' – ' + f(b)
-}
+const fmtWeek = fmtWeekRange
 
 export default function Team() {
   const [devs, setDevs] = useState(null)
@@ -168,7 +164,7 @@ export default function Team() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
         <button className="ghost" disabled={selWeek === mondays[0]}
           onClick={() => setSelWeek(mondays[Math.max(0, mondays.indexOf(selWeek) - 1)])}>←</button>
-        <span className="mono" style={{ fontSize: 14, minWidth: 130, textAlign: 'center' }}>{fmtWeek(selWeek)}</span>
+        <span className="mono" style={{ fontSize: 13.5, minWidth: 190, textAlign: 'center' }}>{fmtWeek(selWeek)}</span>
         <button className="ghost" disabled={selWeek === mondays[mondays.length - 1]}
           onClick={() => setSelWeek(mondays[Math.min(mondays.length - 1, mondays.indexOf(selWeek) + 1)])}>→</button>
         {selWeek === mondays[mondays.length - 1] && <span className="typepill">current week</span>}
@@ -230,7 +226,7 @@ export default function Team() {
                     <div className="seg-p" style={{ height: px(t.p) }} />
                     <div className="seg-b" style={{ height: px(t.b) }} />
                   </div>
-                  <div className="trend-lbl">{m.slice(5).replace('-', '/')}</div>
+                  <div className="trend-lbl">{fmtDay(m)}</div>
                 </div>
               )
             })}

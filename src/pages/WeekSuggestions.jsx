@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { COLORS, money, hrs, net } from '../lib/format.js'
+import { COLORS, money, hrs, net, fmtWeekRange, fmtDay } from '../lib/format.js'
 import { supabase, configured } from '../lib/supabase.js'
 
 // ============================================================
@@ -217,7 +217,7 @@ ${JSON.stringify(items)}`
   // ---- the planner ----
   async function generate(useAI) {
     if (useAI && !localStorage.getItem('uhm_key')) { setMsg('Add your Anthropic API key on the Hours Mirror page first (same key as the Mirror).'); return }
-    if (!window.confirm('Generate suggestions' + (useAI ? ' with AI memos' : '') + ' for ' + NAMES[acct] + ' · week of ' + weekStart + '? This replaces the existing plan for this account/week.')) return
+    if (!window.confirm('Generate suggestions' + (useAI ? ' with AI memos' : '') + ' for ' + NAMES[acct] + ' · ' + fmtWeekRange(weekStart) + '? This replaces the existing plan for this account/week.')) return
     setBusy(true); setMsg('')
 
     // memo provider: deterministic chunking, or Claude-written memos
@@ -349,7 +349,7 @@ ${JSON.stringify(items)}`
     await supabase.from('week_log_plan').delete().eq('id', row.id)
   }
   async function clearAll() {
-    if (!window.confirm('Clear all ' + acctPlan.length + ' suggestion(s) for ' + NAMES[acct] + ' · week of ' + weekStart + '?')) return
+    if (!window.confirm('Clear all ' + acctPlan.length + ' suggestion(s) for ' + NAMES[acct] + ' · ' + fmtWeekRange(weekStart) + '?')) return
     setBusy(true)
     const { error } = await supabase.from('week_log_plan').delete().eq('account', acct).eq('week_start', weekStart)
     if (error) { setMsg('Clear failed: ' + error.message); setBusy(false); return }
@@ -399,7 +399,7 @@ ${JSON.stringify(items)}`
     <>
       <div className="pagehead">
         <h1>Week Suggestions</h1>
-        <span className="sub">timesheets in · mirrored hours out · striped blocks = log these on Upwork</span>
+        <span className="sub">what the devs worked, turned into the entries you still need to log on Upwork</span>
       </div>
 
       <div className="card bar">
@@ -415,7 +415,7 @@ ${JSON.stringify(items)}`
           <button className={view === 'cal' ? 'on' : ''} onClick={() => switchView('cal')}>Calendar</button>
         </div>
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off - 1)} disabled={off <= -8}>◀</button>
-        <span className="mono" style={{ fontSize: 13 }}>week of {weekStart}{off === 1 ? ' · next week' : off === 2 ? ' · in 2 weeks' : off === 0 ? '' : ''}</span>
+        <span style={{ fontSize: 13.5, minWidth: 190, textAlign: 'center' }}>{fmtWeekRange(weekStart)}{off === 1 ? ' · next week' : off === 2 ? ' · in 2 weeks' : ''}</span>
         <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off + 1)} disabled={off >= 2}>▶</button>
         <span style={{ marginLeft: 'auto' }} />
         {acctPlan.length > 0 && (
@@ -475,7 +475,7 @@ ${JSON.stringify(items)}`
         <div className="card" style={{ marginBottom: 12 }}>
           <div className="paneltitle">
             <span className="swatch" style={{ background: COLORS[acct] }} />
-            {DAYS[selDay]} · {plusDays(weekStart, selDay)}
+            {DAYS[selDay]} · {fmtDay(plusDays(weekStart, selDay))}
           </div>
           {(() => {
             const mir = acctMirror.filter((b) => b.day === selDay).map((b) => ({ kind: 'mir', s: b.start_min, e: b.end_min, pid: b.confirmed_project_id, id: 'm' + b.id }))
@@ -584,7 +584,7 @@ ${JSON.stringify(items)}`
             <section className={'dayrow' + (today ? ' today' : '')} key={d}>
               <header className="dayrow-head">
                 <span className="dayrow-name">{today ? '● ' : ''}{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][d]}</span>
-                <span className="dayrow-date mono">{plusDays(weekStart, d).slice(5).replace('-', '/')}</span>
+                <span className="dayrow-date">{fmtDay(plusDays(weekStart, d))}</span>
                 <span className="dayrow-meta">
                   {openH > 0 && <span className="dm togo">{openH.toFixed(1)}h to log</span>}
                   {mirH > 0 && <span className="dm">{mirH.toFixed(1)}h on Upwork</span>}
@@ -655,7 +655,7 @@ ${JSON.stringify(items)}`
                   return (
                     <div className="calday" key={d}>
                       <div className={'calday-head' + (today ? ' today' : '')}>
-                        {dname} <span className="mono">{plusDays(weekStart, d).slice(8)}</span>
+                        {dname} <span className="mono">{new Date(plusDays(weekStart, d) + 'T00:00:00Z').getUTCDate()}</span>
                       </div>
                       <div className="calday-body" style={{ height: (hi - lo) / 60 * PX }}>
                         {Array.from({ length: (hi - lo) / 60 - 1 }, (_, i) => i + 1).map((h) => (
