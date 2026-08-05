@@ -149,6 +149,23 @@ export default function WeekSuggestions() {
     return { tot, byDay }
   }, [entries, acct, projById, weekStart])
 
+  // PM minutes per project — internal, never auto-suggested, but shown so you
+  // can see exactly what is being excluded and decide case by case
+  const pmStats = useMemo(() => {
+    const tot = {}, byDay = {}
+    entries.forEach((e) => {
+      if (e.project_id == null || !e.is_pm) return
+      const pid = String(e.project_id)
+      if (!projById.has(pid) || projById.get(pid).account !== acct) return
+      const d = dayIdx(e.work_date, weekStart)
+      if (d < 0 || d > 6) return
+      const m = Number(e.hours) * 60
+      tot[pid] = (tot[pid] || 0) + m
+      ;(byDay[pid] = byDay[pid] || [0, 0, 0, 0, 0, 0, 0])[d] += m
+    })
+    return { tot, byDay }
+  }, [entries, acct, projById, weekStart])
+
   // minutes already on Upwork per project (confirmed mirror blocks) and per day
   const loggedStats = useMemo(() => {
     const tot = {}, byDay = {}
@@ -375,8 +392,9 @@ ${JSON.stringify(items)}`
     const worked = workedStats.tot[pid] || 0
     const logged = loggedStats.tot[pid] || 0
     const planned = plannedTot[pid] || 0
-    if (!worked && !logged && !planned) return null
-    return { p, pid, worked, logged, planned, toLog: Math.max(0, worked - logged) }
+    const pm = pmStats.tot[pid] || 0
+    if (!worked && !logged && !planned && !pm) return null
+    return { p, pid, worked, logged, planned, pm, toLog: Math.max(0, worked - logged) }
   }).filter(Boolean).sort((a, b) => b.toLog - a.toLog)
 
   const freeTotal = useMemo(() => {
@@ -439,6 +457,13 @@ ${JSON.stringify(items)}`
             <span><strong>{((planMin - doneMin) / 60).toFixed(1)}h</strong> left to log</span>
             <span className="sep">·</span>
             <span><strong>{(doneMin / 60).toFixed(1)}h</strong> done</span>
+            {(() => {
+              const pmTot = summary.reduce((a, r) => a + r.pm, 0)
+              return pmTot > 0 ? <>
+                <span className="sep">·</span>
+                <span><strong className="pmnum">{(pmTot / 60).toFixed(1)}h</strong> PM (excluded)</span>
+              </> : null
+            })()}
             {capped.length > 0 && <>
               <span className="sep">·</span>
               <span>contract caps: {over.length > 0
@@ -517,6 +542,9 @@ ${JSON.stringify(items)}`
                   <div className="pstat"><em>Planned</em><b>{hrs(r.planned / 60)}</b></div>
                   <div className="pstat"><em>To log</em><b style={{ color: r.toLog >= MIN_CHUNK ? 'var(--warnc)' : 'var(--ok)' }}>{hrs(r.toLog / 60)}</b></div>
                 </div>
+                {r.pm > 0 && (
+                  <div className="wchip-pm" style={{ marginTop: 8 }}>{hrs(r.pm / 60)} PM — not logged</div>
+                )}
                 {(taskStats.week[r.pid] || []).length > 0 && (
                   <div className="muted tasksline" style={{ marginTop: 8 }}>{taskStats.week[r.pid].join(' \u00b7 ')}</div>
                 )}
@@ -543,6 +571,9 @@ ${JSON.stringify(items)}`
                     <span className={'wchip-h' + (r.toLog >= MIN_CHUNK ? '' : ' ok')}>{r.toLog >= MIN_CHUNK ? hrs(r.toLog / 60) + ' to log' : 'all logged ✓'}</span>
                   </div>
                   <div className="wchip-bar"><span style={{ width: pct + '%' }} /></div>
+                  <div className={'wchip-pm' + (r.pm > 0 ? '' : ' none')}>
+                    {r.pm > 0 ? hrs(r.pm / 60) + ' PM — not logged' : 'no PM hours'}
+                  </div>
                   {(() => {
                     const cap = Number(r.p.weekly_cap_hours) || 0
                     const load = contractLoad[r.pid] || 0
