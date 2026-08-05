@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { ACCOUNTS, COLORS, money, hrs, net, fmtWeekRange } from '../lib/format.js'
+import { mondayOf, plusDays, getWeekOff, setWeekOff, offsetOfMonday } from '../lib/week.js'
 import { supabase, configured } from '../lib/supabase.js'
 
 // ============================================================
@@ -20,25 +21,27 @@ const pad = (n) => String(n).padStart(2, '0')
 const mlab = (m) => pad(Math.floor((m % 1440) / 60)) + ':' + pad(m % 60)
 const toMin = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0) }
 const isoDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-function mondayOf() {
-  const d = new Date()
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-  return isoDate(d)
-}
-function plusDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d) }
 
 const BASE_PROMPT = `You are reading a screenshot of an Upwork Work Diary / manual time log page (a weekly or daily time grid showing logged time blocks).
 Extract every logged/filled time block you can see. Respond ONLY with raw JSON, no markdown fences, no commentary:
 __SCHEMA__
+Also report which week the screen shows: set "week_start" to the Monday of the visible week in YYYY-MM-DD if any dates are visible (day headers, a date range, a month/year label); use null only if no date is visible anywhere.
 Rules: day is Mon..Sun (if single-day view, infer from visible date header; if impossible use Mon and note it). Times 24h HH:MM snapped to 10-min increments; if the page shows 12-hour times convert AM/PM correctly (12:00 AM = 00:00). Only clearly filled blocks; do not invent. If not a diary page at all return {"blocks":[],"confidence":"low","notes":"not a diary page"}.__MATCH__`
 
-const SCHEMA_PLAIN = `{"blocks":[{"day":"Mon","start":"09:00","end":"10:30","label":"memo/contract text if visible else empty"}],"confidence":"high|medium|low","notes":"anything ambiguous"}`
-const SCHEMA_SUGG = `{"blocks":[{"day":"Mon","start":"09:00","end":"10:30","label":"memo/contract text if visible else empty","project":"channel-from-list-or-null","project_confidence":"high|medium|low"}],"confidence":"high|medium|low","notes":"anything ambiguous"}`
+const SCHEMA_PLAIN = `{"blocks":[{"day":"Mon","start":"09:00","end":"10:30","label":"memo/contract text if visible else empty"}],"week_start":"YYYY-MM-DD or null","confidence":"high|medium|low","notes":"anything ambiguous"}`
+const SCHEMA_SUGG = `{"blocks":[{"day":"Mon","start":"09:00","end":"10:30","label":"memo/contract text if visible else empty","project":"channel-from-list-or-null","project_confidence":"high|medium|low"}],"week_start":"YYYY-MM-DD or null","confidence":"high|medium|low","notes":"anything ambiguous"}`
 
 export default function HoursMirror() {
   const labs = configured
-  const weekStart = useMemo(() => mondayOf(), [])
+  const [off, setOff] = useState(() => Math.min(0, Math.max(-8, getWeekOff())))
+  const weekStart = useMemo(() => mondayOf(off), [off])
   const weekEnd = useMemo(() => plusDays(weekStart, 6), [weekStart])
+  function changeWeek(next) {
+    const o = Math.min(0, Math.max(-8, next))
+    setOff(o); setWeekOff(o)
+    setWeekMismatch(null)
+    setStatus({ msg: 'Now reading into ' + fmtWeekRange(mondayOf(o)) + '.', warn: '' })
+  }
 
   const [blocks, setBlocks] = useState(() => configured ? [] : JSON.parse(localStorage.getItem('uhm_blocks') || '[]'))
   const [acct, setAcct] = useState('tc')
@@ -60,6 +63,7 @@ export default function HoursMirror() {
   const [billedDraft, setBilledDraft] = useState({}) // project_id -> input string
   const [pushedOk, setPushedOk] = useState({})       // project_id -> true after push
   const [loaded, setLoaded] = useState(!configured)
+  const [weekMismatch, setWeekMismatch] = useState(null)   // Monday the screen appears to show
 
   const videoRef = useRef(null)
   const streamRef = useRef(null)
@@ -99,7 +103,7 @@ export default function HoursMirror() {
       setBlocks((bl.data || []).map(rowToBlock))
       setLoaded(true)
     })()
-  }, [labs])
+  }, [labs, weekStart])
 
   const rowToBlock = (r) => ({
     id: r.id, acct: r.account, day: r.day, start: r.start_min, end: r.end_min,
@@ -274,6 +278,16 @@ export default function HoursMirror() {
       await dbDelete(removed.map((r) => r.id))
       const withIds = await dbInsert(incoming)
       setBlocks((cur) => cur.filter((p) => !removed.some((r) => r.id === p.id)).concat(withIds))
+      // week-boundary guard: if the diary on screen is a different week than
+      // the one we're writing into, say so loudly (this is how hours end up
+      // stamped to the wrong week when mirroring late Sunday / after midnight)
+      let seen = null
+      if (parsed.week_start && /^\d{4}-\d{2}-\d{2}$/.test(parsed.week_start)) {
+        const o = offsetOfMonday(parsed.week_start)
+        const m = mondayOf(o)
+        seen = m !== weekStart ? m : null
+      }
+      setWeekMismatch(seen)
       const sug = withIds.filter((b) => b.sproj && !b.cproj).length
       setStatus({
         msg: 'Read ' + withIds.length + ' block(s)' + (labs ? ' · ' + sug + ' suggested' : '') + ' · ' + new Date().toLocaleTimeString() + ' · confidence ' + (parsed.confidence || '?'),
@@ -334,7 +348,7 @@ export default function HoursMirror() {
     setBlocks((prev) => [...prev, ...withIds])
   }
   async function clearAccount() {
-    if (labs && !window.confirm('Remove all mirrored blocks for ' + NAMES[acct] + ' this week? This also clears them from the database.')) return
+    if (labs && !window.confirm('Remove all mirrored blocks for ' + NAMES[acct] + ' · ' + fmtWeekRange(weekStart) + '? This also clears them from the database.')) return
     const ids = blocks.filter((b) => b.acct === acct).map((b) => b.id)
     setBlocks((prev) => prev.filter((b) => b.acct !== acct))
     await dbDelete(ids)
@@ -430,6 +444,27 @@ export default function HoursMirror() {
       </div>
 
       <div className="card bar d-only">
+        <span style={{ fontSize: 13, color: 'var(--mut)' }}>Reading into</span>
+        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => changeWeek(off - 1)} disabled={off <= -8}>◀</button>
+        <strong style={{ fontSize: 13.5, minWidth: 190, textAlign: 'center' }}>{fmtWeekRange(weekStart)}</strong>
+        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => changeWeek(off + 1)} disabled={off >= 0}>▶</button>
+        {off === 0 && <span className="muted" style={{ fontSize: 11.5 }}>this week</span>}
+      </div>
+
+      {weekMismatch && (
+        <div className="notice warn" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span>
+            ⚠ The diary on screen looks like <strong>{fmtWeekRange(weekMismatch)}</strong>, but you're reading into <strong>{fmtWeekRange(weekStart)}</strong>.
+            Blocks just saved went into {fmtWeekRange(weekStart)}.
+          </span>
+          <button className="primary" style={{ fontSize: 12.5 }} onClick={() => changeWeek(offsetOfMonday(weekMismatch))}>
+            Switch to {fmtWeekRange(weekMismatch)}
+          </button>
+          <button className="ghost" style={{ fontSize: 12.5 }} onClick={() => setWeekMismatch(null)}>Dismiss</button>
+        </div>
+      )}
+
+      <div className="card bar d-only">
         <button className={sharing ? 'ghost' : 'primary'} onClick={toggleShare}>
           {sharing ? 'Stop sharing' : 'Share Upwork window'}
         </button>
@@ -469,6 +504,11 @@ export default function HoursMirror() {
       {/* ---------- mobile: read-only week results ---------- */}
       {labs && (
         <div className="m-only">
+          <div className="card bar" style={{ marginBottom: 10 }}>
+            <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => changeWeek(off - 1)} disabled={off <= -8}>◀</button>
+            <strong style={{ fontSize: 13, flex: 1, textAlign: 'center' }}>{fmtWeekRange(weekStart)}</strong>
+            <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => changeWeek(off + 1)} disabled={off >= 0}>▶</button>
+          </div>
           <div className="tabs" style={{ marginBottom: 10 }}>
             {Object.entries(NAMES).map(([k]) => (
               <button key={k} className={'tab' + (k === acct ? ' active' : '')}

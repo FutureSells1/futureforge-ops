@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { COLORS, money, hrs, net, fmtWeekRange, fmtDay } from '../lib/format.js'
+import { mondayOf, plusDays, getWeekOff, setWeekOff } from '../lib/week.js'
 import { supabase, configured } from '../lib/supabase.js'
 
 // ============================================================
@@ -57,19 +58,14 @@ const projColors = (ch) => {
 const mlab = (m) => pad(Math.floor((m % 1440) / 60)) + ':' + pad(m % 60)
 const r10 = (m) => Math.round(m / 10) * 10
 const isoDate = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-function mondayOf(offsetWeeks = 0) {
-  const d = new Date()
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offsetWeeks * 7)
-  return isoDate(d)
-}
-function plusDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d) }
 function dayIdx(workDate, weekStart) {
   return Math.round((new Date(workDate + 'T00:00:00') - new Date(weekStart + 'T00:00:00')) / 86400000)
 }
 
 export default function WeekSuggestions() {
   const labs = configured
-  const [off, setOff] = useState(0)
+  const [off, setOff] = useState(() => Math.min(2, Math.max(-8, getWeekOff())))
+  const changeWeek = (n) => { const o = Math.min(2, Math.max(-8, n)); setOff(o); setWeekOff(o); setMsg('') }
   const weekStart = useMemo(() => mondayOf(off), [off])
   const weekEnd = useMemo(() => plusDays(weekStart, 6), [weekStart])
 
@@ -414,9 +410,9 @@ ${JSON.stringify(items)}`
           <button className={view === 'list' ? 'on' : ''} onClick={() => switchView('list')}>List</button>
           <button className={view === 'cal' ? 'on' : ''} onClick={() => switchView('cal')}>Calendar</button>
         </div>
-        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off - 1)} disabled={off <= -8}>◀</button>
+        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => changeWeek(off - 1)} disabled={off <= -8}>◀</button>
         <span style={{ fontSize: 13.5, minWidth: 190, textAlign: 'center' }}>{fmtWeekRange(weekStart)}{off === 1 ? ' · next week' : off === 2 ? ' · in 2 weeks' : ''}</span>
-        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => setOff(off + 1)} disabled={off >= 2}>▶</button>
+        <button className="ghost" style={{ padding: '5px 11px' }} onClick={() => changeWeek(off + 1)} disabled={off >= 2}>▶</button>
         <span style={{ marginLeft: 'auto' }} />
         {acctPlan.length > 0 && (
           <button className="ghost" onClick={clearAll} disabled={busy || !loaded}>Clear all</button>
