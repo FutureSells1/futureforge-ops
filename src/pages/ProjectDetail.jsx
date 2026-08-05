@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useParams, useOutletContext } from 'react-router-dom'
-import { supabase, configured } from '../lib/supabase.js'
+import { supabase, configured, fetchAll } from '../lib/supabase.js'
 import { ACCOUNTS, COLORS, money, money2, hrs, net, dayName, fmtWeekRange, fmtDate, fmtStamp } from '../lib/format.js'
 import { postToSlack } from '../lib/slack.js'
 
@@ -40,11 +40,13 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (!configured) return
     loadProj(); loadMilestones(); loadWeekRev()
-    supabase.from('hours_entries')
+    fetchAll(() => supabase.from('hours_entries')
       .select('id, work_date, hours, raw_key, is_pm, devs(name, hourly_cost)')
       .eq('project_id', id)
       .order('work_date', { ascending: false })
-      .then(({ data, error }) => { if (error) setErr(error.message); else setEntries(data) })
+      .order('id', { ascending: true }))
+      .then(setEntries)
+      .catch((e) => setErr(e.message))
   }, [id])
 
   if (!configured) return <div className="notice">Connect Supabase first — see the README.</div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { COLORS, money, hrs, net, fmtWeekRange, fmtDay } from '../lib/format.js'
 import { mondayOf, plusDays, getWeekOff, setWeekOff } from '../lib/week.js'
-import { supabase, configured } from '../lib/supabase.js'
+import { supabase, configured, fetchAll } from '../lib/supabase.js'
 
 // ============================================================
 // Week Suggestions (Labs) — the logging plan.
@@ -94,8 +94,9 @@ export default function WeekSuggestions() {
     ;(async () => {
       const [pj, he, bl, pl, ms] = await Promise.all([
         supabase.from('projects').select('id, channel, project_code, display_name, client_name, account, billing_type, billing_rate, weekly_cap_hours').eq('status', 'active'),
-        supabase.from('hours_entries').select('project_id, work_date, hours, task, is_pm').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
-        supabase.from('upwork_blocks').select('*').eq('week_start', weekStart),
+        fetchAll(() => supabase.from('hours_entries').select('project_id, work_date, hours, task, is_pm')
+          .gte('work_date', weekStart).lte('work_date', weekEnd).order('id')).then((data) => ({ data })),
+        fetchAll(() => supabase.from('upwork_blocks').select('*').eq('week_start', weekStart).order('id')).then((data) => ({ data })),
         supabase.from('week_log_plan').select('*').eq('week_start', weekStart),
         supabase.from('project_milestones').select('project_id, released'),
       ])

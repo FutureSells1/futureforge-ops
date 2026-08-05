@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { ACCOUNTS, COLORS, money, hrs, net, fmtWeekRange } from '../lib/format.js'
 import { mondayOf, plusDays, getWeekOff, setWeekOff, offsetOfMonday } from '../lib/week.js'
-import { supabase, configured } from '../lib/supabase.js'
+import { supabase, configured, fetchAll } from '../lib/supabase.js'
 
 // ============================================================
 // Hours Mirror.
@@ -92,9 +92,10 @@ export default function HoursMirror() {
       const [pj, dv, he, wr, bl] = await Promise.all([
         supabase.from('projects').select('id, channel, display_name, client_name, account, billing_type, billing_rate').eq('status', 'active'),
         supabase.from('devs').select('id, hourly_cost'),
-        supabase.from('hours_entries').select('project_id, dev_id, hours').gte('work_date', weekStart).lte('work_date', weekEnd).limit(5000),
+        fetchAll(() => supabase.from('hours_entries').select('project_id, dev_id, hours')
+          .gte('work_date', weekStart).lte('work_date', weekEnd).order('id')).then((data) => ({ data })),
         supabase.from('project_week_revenue').select('project_id, amount').eq('week_start', weekStart),
-        supabase.from('upwork_blocks').select('*').eq('week_start', weekStart),
+        fetchAll(() => supabase.from('upwork_blocks').select('*').eq('week_start', weekStart).order('id')).then((data) => ({ data })),
       ])
       setProjects(pj.data || [])
       setDevCost(Object.fromEntries((dv.data || []).map((d) => [d.id, Number(d.hourly_cost) || 0])))

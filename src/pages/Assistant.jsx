@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase, configured } from '../lib/supabase.js'
+import { supabase, configured, fetchAll } from '../lib/supabase.js'
 import { fmtWeekRange, fmtStamp } from '../lib/format.js'
 
 // ============================================================
@@ -122,10 +122,11 @@ export default function Assistant() {
       supabase.from('project_profitability').select('*'),
       supabase.from('projects').select('id, channel, display_name, client_name, account, billing_type, billing_rate, weekly_cap_hours, status'),
       supabase.from('project_estimates').select('*'),
-      supabase.from('week_log_plan').select('*').in('week_start', [weekStart, nextWeek]),
-      supabase.from('upwork_blocks').select('id, account, day, start_min, end_min, label, suggested_project_id, suggestion_confidence, confirmed_project_id').eq('week_start', weekStart),
+      fetchAll(() => supabase.from('week_log_plan').select('*').in('week_start', [weekStart, nextWeek]).order('id')).then((data) => ({ data })),
+      fetchAll(() => supabase.from('upwork_blocks').select('id, account, day, start_min, end_min, label, suggested_project_id, suggestion_confidence, confirmed_project_id').eq('week_start', weekStart).order('id')).then((data) => ({ data })),
       supabase.from('project_week_revenue').select('project_id, week_start, amount').gte('week_start', lastWeek),
-      supabase.from('hours_entries').select('project_id, work_date, hours, is_overhead, is_pm').gte('work_date', lastWeek).lte('work_date', weekEnd).limit(8000),
+      fetchAll(() => supabase.from('hours_entries').select('project_id, work_date, hours, is_overhead, is_pm')
+        .gte('work_date', lastWeek).lte('work_date', weekEnd).order('id')).then((data) => ({ data })),
       supabase.from('devs').select('id, name, hourly_cost, active'),
       supabase.from('project_milestones').select('project_id, amount, released'),
       supabase.from('sync_warnings').select('id', { count: 'exact', head: true }),
@@ -243,13 +244,13 @@ Overhead dev hours this week: ${overheadH.toFixed(1)}h · Sync warnings: ${warn.
             supabase.from('project_week_revenue').select('week_start, amount').eq('project_id', p.id).order('week_start', { ascending: false }).limit(8),
             supabase.from('project_milestones').select('name, amount, released, position').eq('project_id', p.id).order('position'),
             supabase.from('project_estimates').select('*').eq('project_id', p.id).maybeSingle(),
-            supabase.from('hours_entries').select('work_date, hours, dev_id, task, is_pm').eq('project_id', p.id)
+            fetchAll(() => supabase.from('hours_entries').select('work_date, hours, dev_id, task, is_pm').eq('project_id', p.id)
               .gte('work_date', (() => {
                 const dflt = plusDays(weekStart, -14)
                 if (!i.since || !/^\d{4}-\d{2}-\d{2}$/.test(i.since)) return dflt
                 const floor = plusDays(weekStart, -60)
                 return i.since < floor ? floor : i.since
-              })()).order('work_date').limit(3000),
+              })()).order('work_date').order('id')).then((data) => ({ data })),
           ])
           const byDate = {}, taskHours = {}
           let pmTotal = 0
