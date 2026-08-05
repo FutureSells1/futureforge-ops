@@ -489,7 +489,12 @@ html{-webkit-text-size-adjust:100%;}
 .cb-sub{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .caldetail{margin-top:12px;max-width:520px;}
 
-/* Week Suggestions: PM visibility line */
-.wchip-pm{font-size:10.5px;margin-top:7px;color:var(--warnc);font-family:"IBM Plex Mono",monospace;}
-.wchip-pm.none{color:var(--mut);opacity:.55;}
+.wtotals strong.pmnum{color:var(--warnc);}
+
+/* Week Suggestions: PM hours — deliberately separated from the billable line */
+.wchip-pmrow{display:flex;align-items:center;gap:7px;margin-top:11px;padding-top:9px;
+  border-top:1px dashed var(--line2);}
+.wchip-pmrow.empty{opacity:.4;}
+.wchip-pmtext{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--mut);}
+.wchip-pmrow .pmtag{margin-left:0;}
 .wtotals strong.pmnum{color:var(--warnc);}

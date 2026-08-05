@@ -461,7 +461,7 @@ ${JSON.stringify(items)}`
               const pmTot = summary.reduce((a, r) => a + r.pm, 0)
               return pmTot > 0 ? <>
                 <span className="sep">·</span>
-                <span><strong className="pmnum">{(pmTot / 60).toFixed(1)}h</strong> PM (excluded)</span>
+                <span><strong className="pmnum">{(pmTot / 60).toFixed(1)}h</strong> of PM (excluded)</span>
               </> : null
             })()}
             {capped.length > 0 && <>
@@ -543,7 +543,10 @@ ${JSON.stringify(items)}`
                   <div className="pstat"><em>To log</em><b style={{ color: r.toLog >= MIN_CHUNK ? 'var(--warnc)' : 'var(--ok)' }}>{hrs(r.toLog / 60)}</b></div>
                 </div>
                 {r.pm > 0 && (
-                  <div className="wchip-pm" style={{ marginTop: 8 }}>{hrs(r.pm / 60)} PM — not logged</div>
+                  <div className="wchip-pmrow">
+                    <span className="pmtag">PM</span>
+                    <span className="wchip-pmtext">{hrs(r.pm / 60)} of PM — not logged</span>
+                  </div>
                 )}
                 {(taskStats.week[r.pid] || []).length > 0 && (
                   <div className="muted tasksline" style={{ marginTop: 8 }}>{taskStats.week[r.pid].join(' \u00b7 ')}</div>
@@ -571,9 +574,14 @@ ${JSON.stringify(items)}`
                     <span className={'wchip-h' + (r.toLog >= MIN_CHUNK ? '' : ' ok')}>{r.toLog >= MIN_CHUNK ? hrs(r.toLog / 60) + ' to log' : 'all logged ✓'}</span>
                   </div>
                   <div className="wchip-bar"><span style={{ width: pct + '%' }} /></div>
-                  <div className={'wchip-pm' + (r.pm > 0 ? '' : ' none')}>
-                    {r.pm > 0 ? hrs(r.pm / 60) + ' PM — not logged' : 'no PM hours'}
-                  </div>
+                  {r.pm > 0 ? (
+                    <div className="wchip-pmrow">
+                      <span className="pmtag">PM</span>
+                      <span className="wchip-pmtext">{hrs(r.pm / 60)} of PM — not logged</span>
+                    </div>
+                  ) : (
+                    <div className="wchip-pmrow empty"><span className="wchip-pmtext">no PM hours</span></div>
+                  )}
                   {(() => {
                     const cap = Number(r.p.weekly_cap_hours) || 0
                     const load = contractLoad[r.pid] || 0
